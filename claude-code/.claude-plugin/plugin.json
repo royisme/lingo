@@ -1,6 +1,6 @@
 {
   "name": "lingo",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Learn a language while you code: shows a translation under your prompts and Claude's replies, and a live preview while you type.",
   "author": {
     "name": "Roy",
@@ -64,6 +64,12 @@
       "type": "boolean",
       "title": "Lingo · Translate Claude's replies",
       "description": "Show a translation under Claude's text. Tool calls and code are never translated.",
+      "default": true
+    },
+    "foldTranslations": {
+      "type": "boolean",
+      "title": "Lingo · Fold translations",
+      "description": "Start each translation folded: nothing is translated (or paid for) until you open it with ▸ Translate, or /lingo show for the latest reply. Turn off to translate every message as it appears.",
       "default": true
     },
     "translationModel": {

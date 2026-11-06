@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.2.6] - 2026-11-06
+
+### Changed
+- **Translations start folded** (new `/config` row `Lingo · Fold translations`, on by default): each message shows `EN ▸ Translate` and nothing is translated, or paid for, until you open it. A translation already made (by the preview, or in an earlier session) opens as `▸ Show translation` with no call. Click an open translation to fold it. `/lingo show` translates the latest reply, for a terminal whose rows can't be clicked. Sending a prompt no longer translates it in advance. Turn the row off for the old behaviour.
+
 ## [0.2.5] - 2026-11-06
 
 ### Changed

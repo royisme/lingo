@@ -42,6 +42,7 @@ Terminal, Desktop, VS Code 및 Mobile에서 모두 작동합니다.
 | **Suggest fixes while typing** | `true` | 초안이 이미 배우는 언어로 쓰여 있으면 프롬프트 입력창 위에 더 자연스러운 표현을 제안합니다. **Use**를 누르면 초안을 바꿉니다 |
 | **Translate my prompts** | `true` | 전송한 각 프롬프트 아래에 번역을 표시합니다 |
 | **Translate Claude's replies** | `true` | Claude의 각 텍스트 답변 아래에 번역을 표시합니다 |
+| **Fold translations** | `true` | 번역은 `▸ Translate`로 접힌 채 시작하며, 펼치기 전에는 번역도 과금도 되지 않습니다. 끄면 메시지가 나타날 때마다 번역합니다 |
 | **Translation model** | `haiku` | 번역에 쓰는 모델: 별칭 또는 전체 ID(`claude-haiku-4-5`, 또는 게이트웨이의 모델 이름). `haiku`를 쓸 수 없는 환경이면 전체 ID를 입력합니다 |
 
 `/config`를 열지 않고도 언제든 전환할 수 있습니다:
@@ -49,6 +50,7 @@ Terminal, Desktop, VS Code 및 Mobile에서 모두 작동합니다.
 - **언어 태그 클릭**: 번역 옆의 언어 태그(`EN`, `FR`, `日本語` 등)를 클릭하면 인라인 선택 메뉴가 열리며, 언어를 변경하거나 해당 줄을 숨기거나 Lingo를 끌 수 있습니다.
 - **실패 시 재시도**: 번역에 실패한 줄(`Translation failed · Retry`)을 클릭하면 다시 번역을 시도합니다.
 - **`/lingo` 명령어 실행**: `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
+- **접힌 번역 펼치기**: 메시지 아래 `▸ Translate`를 클릭하세요. 행을 클릭할 수 없는 터미널에서는 `/lingo show`로 최신 답변을 번역합니다. 펼친 번역을 클릭하면 다시 접힙니다.
 
 ## 건너뛰는 항목
 

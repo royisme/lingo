@@ -31,6 +31,8 @@ type Settings = {
   model: string
   preview: boolean
   polish: boolean
+  /** Translations start folded and are translated only when opened (no call until then). */
+  fold: boolean
   prompts: boolean
   replies: boolean
 }
@@ -44,6 +46,7 @@ function readSettings(options: PluginOptions): Settings {
     model: String(options.translationModel ?? '').trim() || 'haiku',
     preview: bool(options.previewWhileTyping),
     polish: bool(options.polishWhileTyping),
+    fold: bool(options.foldTranslations),
     prompts: bool(options.translatePrompts),
     replies: bool(options.translateReplies),
   }
@@ -58,6 +61,7 @@ const DRAFT = { plugin: 'lingo', key: 'draft' } as const
 const MENU = { plugin: 'lingo', key: 'menu' } as const
 const HIDDEN = { plugin: 'lingo', key: 'hidden' } as const
 const LIMITED = { plugin: 'lingo', key: 'limited' } as const
+const SHOWN = { plugin: 'lingo', key: 'shown' } as const
 const draft = atom(DRAFT, null)
 
 const ACCENT = 'suggestion'
@@ -87,6 +91,8 @@ const MAX_PARALLEL = 2
 const TEXT = {
   translating: 'Translating…',
   waiting: 'Rate limited · waiting…',
+  unfold: '▸ Translate',
+  unfoldKept: '▸ Show translation',
   failed: 'Translation failed',
   retry: 'Translation failed · Retry',
   preview: 'Preview',
@@ -97,7 +103,7 @@ const TEXT = {
   settings: 'Settings…',
 }
 
-const ARGUMENT_HINT = [...LANGUAGES.map(l => l.code), 'off'].join(' | ')
+const ARGUMENT_HINT = ['show', ...LANGUAGES.map(l => l.code), 'off'].join(' | ')
 
 // Module variables: lost on a reload, which at worst runs one translation twice.
 // A gloss left `pending` with no entry here was started by a module since reloaded: it is redone.
@@ -409,6 +415,19 @@ async function hideGloss($: EngineInterface, menuId: string, id: string) {
   await $.state.set({ ...HIDDEN, id }, true)
 }
 
+/** Opens a folded translation: translates it now, or shows the one already kept. */
+async function unfold($: EngineInterface, rowId: string, text: string, target: Language) {
+  await $.state.set({ ...SHOWN, id: rowId }, true)
+  schedule($, text, target)
+}
+
+async function fold($: EngineInterface, rowId: string) {
+  await $.state.set({ ...SHOWN, id: rowId }, false)
+}
+
+/** The newest reply drawn, for `/lingo show` where a row's buttons cannot be clicked (a terminal's main screen). */
+let lastReply: { requestId: string; text: string } | undefined
+
 async function openSettings($: EngineInterface, menuId: string) {
   await $.state.set({ ...MENU, id: menuId }, false)
   await $.prompt.fill({ text: '/config' })
@@ -424,15 +443,19 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
   if (verdict === 'skip') return row
 
   const id = glossId(target, text)
-  const { value } = await $.state.get({ ...GLOSS, id })
-  // A row that failed on something passing (a rate limit) is tried once more by this module, paced.
-  const retry = value?.status === 'error' && value.passing === true && !autoRetried.has(id)
-  if (retry) autoRetried.add(id)
-  if (!value || (value.status === 'pending' && !inFlight.has(id)) || retry) schedule($, text, target)
-  if (value?.status === 'same') return row
-  if ((await $.state.get({ ...HIDDEN, id })).value) return row
-  // One menu per gloss, so a row whose text (and gloss) changes never shows a stale menu.
+  // One menu (and one fold) per gloss, so a row whose text changes never shows a stale one.
   const menuId = `${e.requestId}:${id}`
+  const shown = !settings.fold || ((await $.state.get({ ...SHOWN, id: menuId })).value ?? false)
+  const { value } = await $.state.get({ ...GLOSS, id })
+  if (shown) {
+    // A row that failed on something passing (a rate limit) is tried once more by this module, paced.
+    const retry = value?.status === 'error' && value.passing === true && !autoRetried.has(id)
+    if (retry) autoRetried.add(id)
+    if (!value || (value.status === 'pending' && !inFlight.has(id)) || retry) schedule($, text, target)
+  }
+  // Already in the target: nothing to offer, unless the person opened it (then it says so).
+  if (value?.status === 'same' && !(settings.fold && shown)) return row
+  if ((await $.state.get({ ...HIDDEN, id })).value) return row
   const isOpen = (await $.state.get({ ...MENU, id: menuId })).value ?? false
   const limited = value?.status === 'error' || value?.status === 'done' ? false : ((await $.state.get(LIMITED)).value ?? false)
 
@@ -447,12 +470,26 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
     </Button>
   )
 
-  const body =
-    value?.status === 'done' ? (
+  const body = !shown ? (
+    // Folded: one control and no call. A translation already kept (a preview) opens for free.
+    <Button key="lingo-unfold" plain onPress={() => void unfold($, menuId, text, target)}>
+      <Text dimColor>{value?.status === 'done' ? TEXT.unfoldKept : TEXT.unfold}</Text>
+    </Button>
+  ) : value?.status === 'done' ? (
+    settings.fold ? (
+      <Button key="lingo-fold" plain onPress={() => void fold($, menuId)}>
+        <Text color={ACCENT} italic>
+          {value.text}
+        </Text>
+      </Button>
+    ) : (
       <Text color={ACCENT} italic>
         {value.text}
       </Text>
-    ) : value?.status === 'error' ? (
+    )
+  ) : value?.status === 'same' ? (
+    <Text dimColor>{`Already in ${target.option}`}</Text>
+  ) : value?.status === 'error' ? (
       <Button key="lingo-retry" plain onPress={() => schedule($, text, target)}>
         <Text dimColor>{value.why ? `${TEXT.failed} (${value.why}) · Retry` : TEXT.retry}</Text>
       </Button>
@@ -612,6 +649,16 @@ async function clearPreview($: EngineInterface) {
   if ((await $.state.get(DRAFT)).value) await $.state.set(DRAFT, null)
 }
 
+/** `/lingo show`: opens and translates the newest reply, for surfaces where its row cannot be clicked. */
+async function showLatest($: EngineInterface): Promise<{ text: string }> {
+  const target = settings.target
+  if (!target) return { text: 'Lingo is off. Turn it on with /lingo en (or another language).' }
+  if (!lastReply) return { text: 'Lingo: no reply to translate yet.' }
+  if (decide(lastReply.text, target) === 'skip') return { text: `Lingo: the latest reply needs no translation into ${target.option}.` }
+  await unfold($, `${lastReply.requestId}:${glossId(target, lastReply.text)}`, lastReply.text, target)
+  return { text: 'Lingo: translating the latest reply.' }
+}
+
 // ---- hooks -----------------------------------------------------------------
 
 export const register: Register = (on, options) => {
@@ -620,7 +667,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'lingo',
-      description: 'Switch the language Lingo translates into: /lingo fr, /lingo ja, /lingo off',
+      description: 'Translate the latest reply (/lingo show) or switch the language: /lingo fr, /lingo ja, /lingo off',
       argumentHint: ARGUMENT_HINT,
     })
     return next(e)
@@ -628,6 +675,7 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'lingo' }, async ($, e) => {
     const arg = String(e.args ?? '').trim()
+    if (arg.toLowerCase() === 'show') return showLatest($)
     const lang = findLanguage(arg)
     const option = arg.toLowerCase() === 'off' ? OFF : lang?.option
     if (!option) {
@@ -642,7 +690,7 @@ export const register: Register = (on, options) => {
   // Start translating a prompt the moment it is sent, so its row finds it ready.
   on('prompt.submit', async ($, e, next) => {
     const target = settings.target
-    if (target && settings.prompts && !isCommand(e.text)) schedule($, e.text, target)
+    if (target && settings.prompts && !settings.fold && !isCommand(e.text)) schedule($, e.text, target)
     await clearPreview($)
     return next(e)
   }).catch(($, e, next) => next(e)) // never block a prompt over a translation
@@ -657,6 +705,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const row = await next(e)
     if (!settings.replies || e.props.isSummary) return row
+    lastReply = { requestId: e.requestId, text: e.props.text }
     return glossRow($, e, row, e.props.text)
   })
 

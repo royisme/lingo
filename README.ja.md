@@ -42,6 +42,7 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 | **Suggest fixes while typing** | `true` | 下書きがすでに学習中の言語で書かれているとき、より自然な言い方をプロンプト欄の上に提案します。**Use** で下書きを置き換えます |
 | **Translate my prompts** | `true` | 送信した各プロンプトの下に翻訳を表示します |
 | **Translate Claude's replies** | `true` | Claude の各テキスト返信の下に翻訳を表示します |
+| **Fold translations** | `true` | 訳文は `▸ Translate` として折りたたまれた状態で始まり、開くまで翻訳も課金もされません。オフにすると、メッセージが表示されるたびに翻訳します |
 | **Translation model** | `haiku` | 翻訳に使うモデル。エイリアスか完全な ID（`claude-haiku-4-5`、またはゲートウェイのモデル名）。`haiku` が使えない環境では完全な ID を指定します |
 
 `/config` を開かずにいつでも切り替えることもできます：
@@ -49,6 +50,7 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 - **言語タグをクリック**：翻訳の横にある言語タグ（`EN`、`FR`、`日本語` など）をクリックするとインラインメニューが開き、言語の切り替え、その行の非表示、または Lingo のオフが行えます。
 - **失敗時の再試行**：翻訳に失敗した場合は `Translation failed · Retry` をクリックすると再試行します。
 - **`/lingo` コマンドを実行**：`/lingo fr`、`/lingo ja`、`/lingo zh-TW`、`/lingo off`。
+- **折りたたまれた訳文を開く**：メッセージの下の `▸ Translate` をクリック。行をクリックできないターミナルでは `/lingo show` で最新の返信を翻訳します。開いた訳文をクリックすると再び折りたたみます。
 
 ## スキップされる内容
 
