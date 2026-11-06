@@ -42,6 +42,7 @@ Ouvrez `/config` et cherchez **Lingo** :
 | **Suggest fixes while typing** | `true` | Si votre brouillon est déjà dans la langue que vous apprenez, propose une version plus naturelle au-dessus de la zone de saisie ; **Use** la place dans la zone |
 | **Translate my prompts** | `true` | Affiche une traduction sous chaque prompt que vous envoyez |
 | **Translate Claude's replies** | `true` | Affiche une traduction sous chacune des réponses textuelles de Claude |
+| **Fold translations** | `true` | Chaque traduction commence repliée en `▸ Translate` : rien n'est traduit, ni facturé, tant que vous ne l'ouvrez pas. Désactivez pour traduire chaque message dès qu'il apparaît |
 | **Provider** | `Claude` | `Claude` (via Claude Code, votre compte) ou `OpenAI-compatible` (voir plus bas) |
 | **Provider URL** | `http://localhost:11434/v1` | Avec `OpenAI-compatible` : la base de l'API, terminée par `/v1` |
 | **Translation model** | `haiku` | Le modèle qui traduit : un alias ou un identifiant complet (`claude-haiku-4-5`, ou le nom du modèle de votre passerelle). Indiquez un identifiant complet si `haiku` ne vous est pas accessible |
@@ -51,6 +52,7 @@ Ou changez à tout moment sans ouvrir `/config` :
 - **Cliquez sur le badge de langue** (`EN`, `FR`, `日本語`…) à côté de n'importe quelle traduction pour ouvrir un menu intégré — changez de langue, masquez cette ligne ou désactivez Lingo.
 - **Cliquez sur une ligne en échec** (`Translation failed · Retry`) pour relancer la traduction.
 - **Exécutez `/lingo`** : `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
+- **Ouvrir une traduction repliée** : cliquez sur `▸ Translate` sous un message, ou lancez `/lingo show` pour la dernière réponse (dans un terminal où les lignes ne sont pas cliquables). Cliquez sur une traduction ouverte pour la replier.
 
 ## Ce qui est ignoré
 

@@ -42,6 +42,7 @@ Open `/config` and look for **Lingo**:
 | **Suggest fixes while typing** | `true` | When your draft is already in the language you're learning, suggest a more natural version above the prompt box; **Use** puts it in the box |
 | **Translate my prompts** | `true` | Show a translation under each prompt you send |
 | **Translate Claude's replies** | `true` | Show a translation under each of Claude's text replies |
+| **Fold translations** | `true` | Each translation starts folded as `▸ Translate`: nothing is translated, or paid for, until you open it. Turn off to translate every message as it appears |
 | **Provider** | `Claude` | `Claude` (through Claude Code, your account) or `OpenAI-compatible` (see below) |
 | **Provider URL** | `http://localhost:11434/v1` | With `OpenAI-compatible`: the API base, ending in `/v1` |
 | **Translation model** | `haiku` | The model that translates: an alias or a full id (`claude-haiku-4-5`, or your gateway's model name). Set a full id if `haiku` isn't available to you |
@@ -51,6 +52,7 @@ Or switch at any time without opening `/config`:
 - **Click the language tag** (`EN`, `FR`, `日本語`…) next to any translation to open an inline picker — switch language, hide that line, or turn Lingo off.
 - **Click a failed line** (`Translation failed · Retry`) to retry the translation.
 - **Run `/lingo`**: `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
+- **Open a folded translation**: click `▸ Translate` under a message, or run `/lingo show` for the latest reply (in a terminal where rows can't be clicked). Click an open translation to fold it again.
 
 ## What gets skipped
 

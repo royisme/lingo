@@ -35,6 +35,8 @@ declare module 'claude-code' {
       hidden: StateFamily<boolean>
       /** Calls are cooling down after a rate limit: waiting rows say so. */
       limited: boolean
+      /** Whether a folded translation was opened, by message and gloss (`requestId:glossId`). */
+      shown: StateFamily<boolean>
     }
   }
 }

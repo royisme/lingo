@@ -42,6 +42,7 @@ claude plugin install lingo --marketplace royisme/lingo
 | **Suggest fixes while typing** | `true` | 草稿已經是你在學的語言時，在輸入框上方給出更自然的寫法；點 **Use** 直接取代草稿 |
 | **Translate my prompts** | `true` | 在你發送的每則提問下方顯示譯文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每則文字回覆下方顯示譯文 |
+| **Fold translations** | `true` | 每則譯文預設摺疊為 `▸ Translate`，點開之前不翻譯、也不產生費用。關閉則每則訊息出現時自動翻譯 |
 | **Provider** | `Claude` | `Claude`（經由 Claude Code，用你的帳號）或 `OpenAI-compatible`（見下文） |
 | **Provider URL** | `http://localhost:11434/v1` | 選 `OpenAI-compatible` 時：API 位址，以 `/v1` 結尾 |
 | **Translation model** | `haiku` | 負責翻譯的模型：別名或完整 id（如 `claude-haiku-4-5`，或閘道提供的模型名稱）。`haiku` 在你的帳號或閘道上無法使用時，填完整 id |
@@ -51,6 +52,7 @@ claude plugin install lingo --marketplace royisme/lingo
 - **點擊語言標籤**：點擊任一譯文旁的語言標籤（`EN`、`FR`、`日本語` 等）即可展開內嵌選單——切換語言、隱藏該行譯文或關閉 Lingo。
 - **點擊失敗重試**：若翻譯失敗，點擊 `Translation failed · Retry` 即可重新翻譯。
 - **執行 `/lingo` 指令**：例如 `/lingo fr`、`/lingo ja`、`/lingo zh-TW`、`/lingo off`。
+- **展開摺疊的譯文**：點訊息下方的 `▸ Translate`；終端機裡點不了時，執行 `/lingo show` 翻譯最近一則回覆。點已展開的譯文可以再摺疊。
 
 ## 自動略過的內容
 

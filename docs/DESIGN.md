@@ -19,7 +19,7 @@ Rejected alternatives, kept on the canvas for reference:
 | Direction | Why not chosen |
 | --- | --- |
 | B · Side pane | Original and translation far apart; no room on phones or narrow windows. |
-| C · Folded tag | Every message costs a click; good only for self-testing. |
+| C · Folded tag | Every message costs a click; good only for self-testing. *Since 0.2.6 the gloss row of A starts folded by default (see 3.1, Folded), so no message is translated, or paid for, until it is opened: the cost of a translation for every message mattered more than the click.* |
 
 A wins because reading a sentence next to its translation is what learning needs, and the three marks keep it distinct.
 
@@ -41,6 +41,9 @@ A wins because reading a sentence next to its translation is what learning needs
 | Hidden when | Target is Off; text is already in the target language (`decide` = skip, or model answers `<<SAME>>`); the person hid this gloss; the matching setting is off. |
 
 States:
+
+**Folded** (default, `lingo.foldTranslations`): the row shows the tag and a plain `Button` (`key="lingo-unfold"`) reading `▸ Translate`, dim; nothing is translated, and sending a prompt translates nothing. When a translation of the text is already kept (a preview made it, or an earlier session), it reads `▸ Show translation` and opens with no call. Pressing it opens the row (by `requestId:glossId`) and translates; the open translation is itself a `Button` (`key="lingo-fold"`) that folds it again. `/lingo show` opens the newest reply, for a terminal whose rows cannot be clicked. A text known to be in the target shows no row while folded; opened, it reads `Already in <language>`. With folding off, the row translates as it appears (the states below).
+
 
 | State | Shows |
 | --- | --- |
@@ -123,6 +126,7 @@ Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so th
 | Lingo · Suggest fixes while typing | `lingo.polishWhileTyping` | boolean | true |
 | Lingo · Translate my prompts | `lingo.translatePrompts` | boolean | true |
 | Lingo · Translate Claude's replies | `lingo.translateReplies` | boolean | true |
+| Lingo · Fold translations | `lingo.foldTranslations` | boolean | true |
 | Lingo · Provider | `lingo.provider` | choice: Claude, OpenAI-compatible | Claude |
 | Lingo · Translation model | `lingo.translationModel` | text | haiku |
 | Lingo · Provider URL | `lingo.providerBaseUrl` | text | http://localhost:11434/v1 |
@@ -130,7 +134,7 @@ Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so th
 
 Choice values: `English, Français, Español, Deutsch, Português, 日本語, 한국어, 简体中文, 繁體中文, Русский, Tiếng Việt, Off`.
 
-Shortcut command: `/lingo <code|name|off>` writes the same row. With no argument it reports the current language.
+Shortcut command: `/lingo <code|name|off>` writes the same row. With no argument it reports the current language. `/lingo show` opens and translates the newest reply.
 
 Rejected: a custom `/lingo` settings pane (configuration 2 on the canvas); more to maintain per surface, for no gain over native rows.
 

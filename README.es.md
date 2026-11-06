@@ -42,6 +42,7 @@ Abre `/config` y busca **Lingo**:
 | **Suggest fixes while typing** | `true` | Si tu borrador ya está en el idioma que aprendes, sugiere una versión más natural sobre el cuadro de texto; **Use** la coloca en el cuadro |
 | **Translate my prompts** | `true` | Muestra una traducción debajo de cada prompt que envías |
 | **Translate Claude's replies** | `true` | Muestra una traducción debajo de cada respuesta de texto de Claude |
+| **Fold translations** | `true` | Cada traducción empieza plegada como `▸ Translate`: no se traduce ni se cobra nada hasta que la abres. Desactívalo para traducir cada mensaje en cuanto aparece |
 | **Provider** | `Claude` | `Claude` (a través de Claude Code, tu cuenta) u `OpenAI-compatible` (ver abajo) |
 | **Provider URL** | `http://localhost:11434/v1` | Con `OpenAI-compatible`: la base de la API, terminada en `/v1` |
 | **Translation model** | `haiku` | El modelo que traduce: un alias o un id completo (`claude-haiku-4-5`, o el nombre del modelo de tu pasarela). Usa un id completo si `haiku` no está disponible para ti |
@@ -51,6 +52,7 @@ O cambia en cualquier momento sin abrir `/config`:
 - **Haz clic en la etiqueta de idioma** (`EN`, `FR`, `日本語`…) junto a cualquier traducción para abrir un selector integrado — cambia de idioma, oculta esa línea o desactiva Lingo.
 - **Haz clic en una línea fallida** (`Translation failed · Retry`) para reintentar la traducción.
 - **Ejecuta `/lingo`**: `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
+- **Abrir una traducción plegada**: haz clic en `▸ Translate` bajo un mensaje, o ejecuta `/lingo show` para la última respuesta (en un terminal donde las filas no se pueden pulsar). Haz clic en una traducción abierta para plegarla de nuevo.
 
 ## Qué se omite
 

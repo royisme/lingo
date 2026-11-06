@@ -17,6 +17,9 @@ import {
   unshieldForDisplay,
 } from './lang'
 
+/** Translations shown as they appear (the 0.2.5 behaviour), for tests about translating itself. */
+const AUTO = { options: { foldTranslations: false } } as any
+
 const USAGE = {
   input_tokens: 10,
   output_tokens: 10,
@@ -82,7 +85,7 @@ test('decide: scripts are told apart locally; same-script falls back to the mode
   expect(prose('Check file (./src/auth/login.ts) and "../config/db.json" or [src/main.rs]')).not.toContain('src/main.rs')
 })
 
-test('a Chinese prompt gets a gloss with its tag, on every surface, translated once', async ($, on) => {
+test('a Chinese prompt gets a gloss with its tag, on every surface, translated once', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, 'Look into the login timeout.')
   engineRow(on)
@@ -98,7 +101,7 @@ test('a Chinese prompt gets a gloss with its tag, on every surface, translated o
   expect(asked.length).toBe(1)
 })
 
-test('text already in the target language shows nothing, and asks the model only when unsure', async ($, on) => {
+test('text already in the target language shows nothing, and asks the model only when unsure', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, SAME)
   engineRow(on)
@@ -116,7 +119,7 @@ test('text already in the target language shows nothing, and asks the model only
   await unsure.unmount()
 })
 
-test('summaries are left alone', async ($, on) => {
+test('summaries are left alone', AUTO, async ($, on) => {
   mock.clock(on)
   const asked = answer(on, 'x')
   engineRow(on)
@@ -126,7 +129,7 @@ test('summaries are left alone', async ($, on) => {
   expect(asked.length).toBe(0)
 })
 
-test('the tag opens a menu that switches language, hides a gloss, or turns Lingo off', async ($, on) => {
+test('the tag opens a menu that switches language, hides a gloss, or turns Lingo off', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   answer(on, 'Look into the login timeout.')
   engineRow(on)
@@ -163,7 +166,7 @@ test('the tag opens a menu that switches language, hides a gloss, or turns Lingo
   await ui.unmount()
 })
 
-test('/lingo fr sets the /config row', async ($, on) => {
+test('/lingo fr sets the /config row', AUTO, async ($, on) => {
   mock.clock(on)
   const sets: unknown[] = []
   on('config.set', (_: any, e: any) => {
@@ -183,7 +186,7 @@ test('/lingo fr sets the /config row', async ($, on) => {
   expect(sets).toEqual(['Français', 'Off'])
 })
 
-test('settings from /config: French target, replies off', { options: { targetLanguage: 'Français', translateReplies: false } } as any, async ($, on) => {
+test('settings from /config: French target, replies off', { options: { foldTranslations: false, targetLanguage: 'Français', translateReplies: false } } as any, async ($, on) => {
   const clock = mock.clock(on)
   answer(on, 'Regarde le délai.')
   engineRow(on)
@@ -200,7 +203,7 @@ test('settings from /config: French target, replies off', { options: { targetLan
   await reply.unmount()
 })
 
-test('Off turns everything off', { options: { targetLanguage: 'Off' } } as any, async ($, on) => {
+test('Off turns everything off', { options: { foldTranslations: false, targetLanguage: 'Off' } } as any, async ($, on) => {
   mock.clock(on)
   const asked = answer(on, 'x')
   engineRow(on)
@@ -210,7 +213,7 @@ test('Off turns everything off', { options: { targetLanguage: 'Off' } } as any, 
   expect(asked.length).toBe(0)
 })
 
-test('the draft preview shows above the prompt after a pause', async ($, on) => {
+test('the draft preview shows above the prompt after a pause', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   on('prompt.read', () => ({ value: { text: '先别改代码', cursor: 5 } }))
   answer(on, "Don't change the code yet.")
@@ -244,7 +247,7 @@ test('the draft preview shows above the prompt after a pause', async ($, on) => 
   await ui.unmount()
 })
 
-test('translation failure shows retry button and clicking it recovers on success', async ($, on) => {
+test('translation failure shows retry button and clicking it recovers on success', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let shouldFail = true
   let completeCount = 0
@@ -276,7 +279,7 @@ test('translation failure shows retry button and clicking it recovers on success
   await ui.unmount()
 })
 
-test('model isAnswered false also shows failed and can retry', async ($, on) => {
+test('model isAnswered false also shows failed and can retry', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let attempt = 0
   on('model.complete', () => {
@@ -300,7 +303,7 @@ test('model isAnswered false also shows failed and can retry', async ($, on) => 
   await ui.unmount()
 })
 
-test('text containing <<SAME>> as a substring is not treated as same', async ($, on) => {
+test('text containing <<SAME>> as a substring is not treated as same', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, 'Run lint again with <<SAME>> token')
   engineRow(on)
@@ -313,7 +316,7 @@ test('text containing <<SAME>> as a substring is not treated as same', async ($,
   await ui.unmount()
 })
 
-test('runPreview does not duplicate requests when a translation for the same src is already pending', async ($, on) => {
+test('runPreview does not duplicate requests when a translation for the same src is already pending', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let calls = 0
   let finishModel: () => void
@@ -339,7 +342,7 @@ test('runPreview does not duplicate requests when a translation for the same src
   await clock.settle()
 })
 
-test('draft preview drops result if prompt changed while in flight', async ($, on) => {
+test('draft preview drops result if prompt changed while in flight', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let finishModel: () => void
   let currentText = '第一版草稿'
@@ -393,7 +396,7 @@ test('shield keeps code, URLs, commands and mentions from the model; plain strip
   expect(plain('a * b * c')).toBe('a * b * c')
 })
 
-test('a reply with a long code block sends only its prose to the model', async ($, on) => {
+test('a reply with a long code block sends only its prose to the model', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, 'The problem is the pool config: [code]')
   engineRow(on)
@@ -406,7 +409,7 @@ test('a reply with a long code block sends only its prose to the model', async (
   await ui.unmount()
 })
 
-test('a reply that hits the token cap is marked as cut', async ($, on) => {
+test('a reply that hits the token cap is marked as cut', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   on('model.complete', () => ({
     value: { isAnswered: true, text: 'A very long translation', usage: { ...USAGE, output_tokens: 4096 } },
@@ -418,7 +421,7 @@ test('a reply that hits the token cap is marked as cut', async ($, on) => {
   await ui.unmount()
 })
 
-test('a previewed draft costs no second call once sent', async ($, on) => {
+test('a previewed draft costs no second call once sent', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let box = '先别改代码'
   on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
@@ -439,7 +442,7 @@ test('a previewed draft costs no second call once sent', async ($, on) => {
   await ui.unmount()
 })
 
-test('a draft already in the target language is asked about once, not on every pause', async ($, on) => {
+test('a draft already in the target language is asked about once, not on every pause', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   on('prompt.read', () => ({ value: { text: 'Run lint again quickly', cursor: 3 } }))
   const asked = answer(on, SAME)
@@ -461,7 +464,7 @@ test('a draft already in the target language is asked about once, not on every p
   await ui.unmount()
 })
 
-test('a gloss left pending by a reloaded module is translated again', async ($, on) => {
+test('a gloss left pending by a reloaded module is translated again', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, 'Look into the login timeout.')
   engineRow(on)
@@ -483,7 +486,7 @@ test('a gloss left pending by a reloaded module is translated again', async ($, 
   await again.unmount()
 })
 
-test('at most two glosses translate at once; of those waiting, the newest goes first', async ($, on) => {
+test('at most two glosses translate at once; of those waiting, the newest goes first', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const started: string[] = []
   const finish: Array<() => void> = []
@@ -524,7 +527,7 @@ test('at most two glosses translate at once; of those waiting, the newest goes f
 })
 
 
-test('a prompt sent while its preview is still translating waits for it: one call', async ($, on) => {
+test('a prompt sent while its preview is still translating waits for it: one call', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let box = '帮我查一下超时'
   let calls = 0
@@ -554,7 +557,7 @@ test('a prompt sent while its preview is still translating waits for it: one cal
   await ui.unmount()
 })
 
-test('if that preview fails, the sent prompt shows Retry', async ($, on) => {
+test('if that preview fails, the sent prompt shows Retry', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let box = '帮我查一下日志'
   let calls = 0
@@ -609,7 +612,7 @@ test('classify, isCommand and restoreCode', () => {
   expect(hasChip('why does [x] fail')).toBe(false)
 })
 
-test('a draft in the target language gets a better version, and Use puts it in the box', async ($, on) => {
+test('a draft in the target language gets a better version, and Use puts it in the box', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let box = 'Please help me check why login api is timeout'
   on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
@@ -647,7 +650,7 @@ test('a draft in the target language gets a better version, and Use puts it in t
   await ui.unmount()
 })
 
-test('a natural draft shows nothing, not even while it is checked', async ($, on) => {
+test('a natural draft shows nothing, not even while it is checked', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const box = 'Why does the login endpoint time out after the deploy?'
   on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
@@ -666,7 +669,7 @@ test('a natural draft shows nothing, not even while it is checked', async ($, on
   await ui.unmount()
 })
 
-test('a fix keeps the draft code blocks when used', async ($, on) => {
+test('a fix keeps the draft code blocks when used', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let box = 'why this function is return null:\n```ts\nfunction f() { return null }\n```\nthe test is fail'
   on('prompt.read', () => ({ value: { text: box, cursor: 0 } }))
@@ -694,7 +697,7 @@ test('a fix keeps the draft code blocks when used', async ($, on) => {
   await ui.unmount()
 })
 
-test('suggestions off: a draft in the target language asks nothing', { options: { polishWhileTyping: false } } as any, async ($, on) => {
+test('suggestions off: a draft in the target language asks nothing', { options: { foldTranslations: false, polishWhileTyping: false } } as any, async ($, on) => {
   const clock = mock.clock(on)
   const box = 'Please help me check why login api is timeout'
   on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
@@ -706,7 +709,7 @@ test('suggestions off: a draft in the target language asks nothing', { options: 
   expect(asked.length).toBe(0)
 })
 
-test('slash commands and shell lines get no preview and no gloss', async ($, on) => {
+test('slash commands and shell lines get no preview and no gloss', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const box = '/compact 帮我总结一下刚才的讨论'
   on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
@@ -724,7 +727,7 @@ test('slash commands and shell lines get no preview and no gloss', async ($, on)
   await ui.unmount()
 })
 
-test('a gloss keeps commands and mentions exactly as written', async ($, on) => {
+test('a gloss keeps commands and mentions exactly as written', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, 'First run ⟦1⟧ on ⟦2⟧.')
   engineRow(on)
@@ -735,7 +738,7 @@ test('a gloss keeps commands and mentions exactly as written', async ($, on) => 
   await ui.unmount()
 })
 
-test('Use puts back commands and mentions as written, and is withheld when the model drops one', async ($, on) => {
+test('Use puts back commands and mentions as written, and is withheld when the model drops one', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let box = 'please use /code-review for check the @src/auth.ts file'
   on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
@@ -776,7 +779,7 @@ test('Use puts back commands and mentions as written, and is withheld when the m
   await again.unmount()
 })
 
-test('a rate limit is retried by itself after a cooldown', async ($, on) => {
+test('a rate limit is retried by itself after a cooldown', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let calls = 0
   on('model.complete', () => {
@@ -797,7 +800,7 @@ test('a rate limit is retried by itself after a cooldown', async ($, on) => {
   await ui.unmount()
 })
 
-test('a lasting failure is not retried, and the failed line says why', async ($, on) => {
+test('a lasting failure is not retried, and the failed line says why', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let calls = 0
   on('model.complete', () => {
@@ -812,7 +815,7 @@ test('a lasting failure is not retried, and the failed line says why', async ($,
   await ui.unmount()
 })
 
-test('the preview band says why it failed', async ($, on) => {
+test('the preview band says why it failed', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   on('prompt.read', () => ({ value: { text: '你现在在做什么', cursor: 7 } }))
   on('model.complete', () => {
@@ -828,7 +831,7 @@ test('the preview band says why it failed', async ($, on) => {
   await ui.unmount()
 })
 
-test('the translation model comes from /config, and a model the account lacks says where to change it', { options: { translationModel: 'claude-haiku-4-5' } } as any, async ($, on) => {
+test('the translation model comes from /config, and a model the account lacks says where to change it', { options: { foldTranslations: false, translationModel: 'claude-haiku-4-5' } } as any, async ($, on) => {
   const clock = mock.clock(on)
   const models: string[] = []
   on('model.complete', (_: any, e: any) => {
@@ -845,7 +848,7 @@ test('the translation model comes from /config, and a model the account lacks sa
   await ui.unmount()
 })
 
-test('the translation model defaults to the haiku alias', async ($, on) => {
+test('the translation model defaults to the haiku alias', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const models: string[] = []
   on('model.complete', (_: any, e: any) => {
@@ -861,7 +864,7 @@ test('the translation model defaults to the haiku alias', async ($, on) => {
 
 // ---- pacing and the cross-session cache ----------------------------------------
 
-test('a translation kept from an earlier session is reused: no call', async ($, on) => {
+test('a translation kept from an earlier session is reused: no call', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, 'x')
   const id = hash('en\u0000帮我看一下登录超时')
@@ -874,7 +877,7 @@ test('a translation kept from an earlier session is reused: no call', async ($, 
   await ui.unmount()
 })
 
-test('a settled translation is kept for later sessions, with an index of the newest', async ($, on) => {
+test('a settled translation is kept for later sessions, with an index of the newest', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   answer(on, 'Look into the login timeout.')
   const store = new Map<string, unknown>()
@@ -896,7 +899,7 @@ test('a settled translation is kept for later sessions, with an index of the new
   expect(store.get('gloss-index')).toEqual([id])
 })
 
-test('a draft too short to be worth it gets no preview', async ($, on) => {
+test('a draft too short to be worth it gets no preview', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let box = '你现'
   on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
@@ -913,7 +916,7 @@ test('a draft too short to be worth it gets no preview', async ($, on) => {
   expect(asked.length).toBe(1)
 })
 
-test('a row that failed on a rate limit (in an earlier load) is tried once more by itself', async ($, on) => {
+test('a row that failed on a rate limit (in an earlier load) is tried once more by itself', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, 'Look into the login timeout.')
   engineRow(on)
@@ -934,7 +937,7 @@ test('a row that failed on a rate limit (in an earlier load) is tried once more 
   expect(asked.length).toBe(1)
 })
 
-test('a lasting failure is not retried by itself', async ($, on) => {
+test('a lasting failure is not retried by itself', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, 'x')
   engineRow(on)
@@ -951,7 +954,7 @@ test('a lasting failure is not retried by itself', async ($, on) => {
   await ui.unmount()
 })
 
-const NAMED = { options: { translationModel: 'claude-haiku-5-5' } } as any // a named model: no fallback
+const NAMED = { options: { translationModel: 'claude-haiku-5-5', foldTranslations: false } } as any // a named model: no fallback
 
 test('a lasting rate limit: rows say they wait, then fail with Retry within seconds, never hang', NAMED, async ($, on) => {
   const clock = mock.clock(on)
@@ -1010,7 +1013,7 @@ test('the pace adapts: after rate limits, calls start further apart than the bas
   for (const ui of [a, b, c]) await ui.unmount()
 })
 
-test('a rate limit names the account window that is nearly spent', async ($, on) => {
+test('a rate limit names the account window that is nearly spent', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   on('model.complete', () => ({ value: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE } }))
   on('session.usage', () => ({
@@ -1033,7 +1036,7 @@ test('a rate limit names the account window that is nearly spent', async ($, on)
   await ui.unmount()
 })
 
-test('calls ask for the lowest effort', async ($, on) => {
+test('calls ask for the lowest effort', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const efforts: unknown[] = []
   on('model.complete', (_: any, e: any) => {
@@ -1047,7 +1050,7 @@ test('calls ask for the lowest effort', async ($, on) => {
   await ui.unmount()
 })
 
-test('Haiku 5.5 rate-limited twice: Haiku 4.5 takes over, and later rows go to it directly', async ($, on) => {
+test('Haiku 5.5 rate-limited twice: Haiku 4.5 takes over, and later rows go to it directly', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const models: string[] = []
   on('model.complete', (_: any, e: any) => {
@@ -1073,7 +1076,7 @@ test('Haiku 5.5 rate-limited twice: Haiku 4.5 takes over, and later rows go to i
   await b.unmount()
 })
 
-test('after the fallback window, Haiku 5.5 is tried again', async ($, on) => {
+test('after the fallback window, Haiku 5.5 is tried again', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const models: string[] = []
   let limited = true
@@ -1096,4 +1099,96 @@ test('after the fallback window, Haiku 5.5 is tried again', async ($, on) => {
   expect(models.at(-1)).toBe('haiku')
   await a.unmount()
   await b.unmount()
+})
+
+// ---- folded translations (the default) ---------------------------------------------------
+
+test('folded by default: no call until opened; opening translates, folding again costs nothing', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'Look into the login timeout.')
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-fold'))
+  await clock.settle()
+  expect(asked.length).toBe(0)
+  expect((await ui.find({ type: 'Text', text: /Translate/ }))?.text).toBe('▸ Translate')
+  expect((await ui.find({ type: 'Text', text: /^EN$/ }))?.text).toBe('EN')
+
+  await ui.press({ key: 'lingo-unfold' })
+  await clock.settle()
+  expect(asked.length).toBe(1)
+  expect((await ui.find({ type: 'Text', text: /login timeout/ }))?.text).toBe('Look into the login timeout.')
+
+  await ui.press({ key: 'lingo-fold' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /login timeout/ })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /translation/ }))?.text).toBe('▸ Show translation')
+  await ui.press({ key: 'lingo-unfold' })
+  await clock.settle()
+  expect(asked.length).toBe(1)
+  await ui.unmount()
+})
+
+test('folded: sending a prompt translates nothing', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'x')
+  engineRow(on)
+  on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
+  await ($.prompt as any).submit({ text: '帮我看一下登录超时', origin: { kind: 'composer' } })
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-fold-sent'))
+  await clock.settle()
+  expect(asked.length).toBe(0)
+  await ui.unmount()
+})
+
+test('folded: a translation the preview already made opens for free', async ($, on) => {
+  const clock = mock.clock(on)
+  let box = '先别改代码，先看日志'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const asked = answer(on, "Don't change the code yet; check the logs first.")
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  await clock.settle()
+  expect(asked.length).toBe(1)
+  box = ''
+  const ui = await $.ui.mount(userRow('先别改代码，先看日志', 'desktop', 'm-fold-kept'))
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /translation/ }))?.text).toBe('▸ Show translation')
+  await ui.press({ key: 'lingo-unfold' })
+  await clock.settle()
+  expect(asked.length).toBe(1)
+  expect((await ui.find({ type: 'Text', text: /logs first/ }))?.text).toBe("Don't change the code yet; check the logs first.")
+  await ui.unmount()
+})
+
+test('folded: opening a message already in the target says so', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, SAME)
+  engineRow(on)
+  const ui = await $.ui.mount(replyRow('Run lint again quickly'))
+  await clock.settle()
+  expect(asked.length).toBe(0)
+  await ui.press({ key: 'lingo-unfold' })
+  await clock.settle()
+  expect(asked.length).toBe(1)
+  expect((await ui.find({ type: 'Text', text: /Already/ }))?.text).toBe('Already in English')
+  await ui.unmount()
+})
+
+test('/lingo show translates the latest reply, for a terminal whose rows cannot be clicked', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'The problem is in the connection pool.')
+  engineRow(on)
+  on('command.register', () => ({ value: { command: 'lingo' } }))
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true } as any)
+  const ui = await $.ui.mount({ ...replyRow('问题出在连接池'), surface: 'terminal', requestId: 'a-show' })
+  await clock.settle()
+  expect(asked.length).toBe(0)
+  expect(((await $.command.run({ command: 'lingo', args: 'show' } as any)) as any).text).toBe('Lingo: translating the latest reply.')
+  await clock.settle()
+  expect(asked.length).toBe(1)
+  expect((await ui.find({ type: 'Text', text: /connection pool/ }))?.text).toBe('The problem is in the connection pool.')
+  await ui.unmount()
 })

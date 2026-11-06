@@ -42,6 +42,7 @@ claude plugin install lingo --marketplace royisme/lingo
 | **Suggest fixes while typing** | `true` | 草稿已经是你在学的语言时，在输入框上方给出更自然的写法；点 **Use** 直接替换草稿 |
 | **Translate my prompts** | `true` | 在你发送的每条提问下方展示译文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每条文本回复下方展示译文 |
+| **Fold translations** | `true` | 每条译文默认折叠为 `▸ Translate`，点开之前不翻译、也不产生费用。关掉则每条消息出现时自动翻译 |
 | **Provider** | `Claude` | `Claude`（经由 Claude Code，用你的账号）或 `OpenAI-compatible`（见下文） |
 | **Provider URL** | `http://localhost:11434/v1` | 选 `OpenAI-compatible` 时：API 地址，以 `/v1` 结尾 |
 | **Translation model** | `haiku` | 负责翻译的模型：别名或完整 id（如 `claude-haiku-4-5`，或网关提供的模型名）。`haiku` 在你的账号或网关上不可用时，填完整 id |
@@ -51,6 +52,7 @@ claude plugin install lingo --marketplace royisme/lingo
 - **点击语言标签**：点击任意译文旁的语言标签（`EN`、`FR`、`日本語` 等）即可展开内联菜单——切换语言、隐藏当前译文或关闭 Lingo。
 - **点击失败重试**：当翻译失败时，点击 `Translation failed · Retry` 即可重新触发翻译。
 - **运行 `/lingo` 命令**：例如 `/lingo fr`、`/lingo ja`、`/lingo zh-TW`、`/lingo off`。
+- **展开折叠的译文**：点消息下方的 `▸ Translate`；终端里点不了时，运行 `/lingo show` 翻译最近一条回复。点已展开的译文可以再折叠。
 
 ## 自动跳过的内容
 

@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { chatRequest, chatUrl, readChat, stripThinking } from './openai'
 
-const OLLAMA = { provider: 'OpenAI-compatible', translationModel: 'qwen2.5:7b' }
+const OLLAMA = { provider: 'OpenAI-compatible', translationModel: 'qwen2.5:7b', foldTranslations: false }
 const userRow = (text: string, requestId: string) =>
   ({
     plugin: 'lingo',
@@ -119,7 +119,7 @@ test('Ollama not running: the failed line names the host', { options: OLLAMA } a
   await ui.unmount()
 })
 
-test('the Claude default model name is not sent to another provider', { options: { provider: 'OpenAI-compatible' } } as any, async ($, on) => {
+test('the Claude default model name is not sent to another provider', { options: { provider: 'OpenAI-compatible', foldTranslations: false } } as any, async ($, on) => {
   const clock = mock.clock(on)
   let calls = 0
   on('http.fetch', () => {
