@@ -6,7 +6,7 @@ Aprende un idioma mientras programas. Lingo muestra una traducción discreta deb
 
 ```
 You
-  帮我看一下为什么登录接口会超时
+  Revisa por qué el endpoint de inicio de sesión agota el tiempo de espera
 
   EN  Look into why the login endpoint is timing out.
 ```

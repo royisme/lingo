@@ -6,7 +6,7 @@
 
 ```
 You
-  帮我看一下为什么登录接口会超时
+  ログイン API がタイムアウトする理由を調べて
 
   EN  Look into why the login endpoint is timing out.
 ```

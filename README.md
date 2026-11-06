@@ -6,9 +6,9 @@ Learn a language while you code. Lingo shows a quiet translation under each prom
 
 ```
 You
-  帮我看一下为什么登录接口会超时
+  Look into why the login endpoint is timing out
 
-  EN  Look into why the login endpoint is timing out.
+  FR  Regarde pourquoi l'endpoint de connexion expire.
 ```
 
 What you actually send to Claude is never changed — Lingo only adds the line underneath.

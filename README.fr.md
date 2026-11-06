@@ -6,7 +6,7 @@ Apprenez une langue tout en codant. Lingo affiche discrètement une traduction s
 
 ```
 You
-  帮我看一下为什么登录接口会超时
+  Regarde pourquoi l'endpoint de connexion expire
 
   EN  Look into why the login endpoint is timing out.
 ```
