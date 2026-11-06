@@ -42,6 +42,8 @@ claude plugin install lingo --marketplace royisme/lingo
 | **Suggest fixes while typing** | `true` | 草稿已經是你在學的語言時，在輸入框上方給出更自然的寫法；點 **Use** 直接取代草稿 |
 | **Translate my prompts** | `true` | 在你發送的每則提問下方顯示譯文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每則文字回覆下方顯示譯文 |
+| **Provider** | `Claude` | `Claude`（經由 Claude Code，用你的帳號）或 `OpenAI-compatible`（見下文） |
+| **Provider URL** | `http://localhost:11434/v1` | 選 `OpenAI-compatible` 時：API 位址，以 `/v1` 結尾 |
 | **Translation model** | `haiku` | 負責翻譯的模型：別名或完整 id（如 `claude-haiku-4-5`，或閘道提供的模型名稱）。`haiku` 在你的帳號或閘道上無法使用時，填完整 id |
 
 你也可以隨時切換，無需開啟 `/config`：
@@ -55,9 +57,28 @@ claude plugin install lingo --marketplace royisme/lingo
 - **已經是目標語言的訊息**：例如你正在學習英語，而訊息本身已經是英文時，不會顯示多餘譯文。對於共用拉丁字母的語言（如英語與法語），Lingo 會優先在本地判斷，無法確定時才交由模型識別。
 - **純程式碼、路徑與網址**：僅包含 `` `getUserById` `` 或程式碼區塊的訊息會直接略過，不呼叫模型。在一般文字中，行內程式碼、檔案路徑與命令列參數皆會原樣保留。
 
+## 其他 provider（OpenAI 相容）
+
+Lingo 可以用任何支援 OpenAI chat-completions 介面的服務來翻譯：本機的 **Ollama**、**LM Studio**，以及 **OpenRouter**、**Groq** 等。把 **Provider** 設為 `OpenAI-compatible`，**Provider URL** 填 API 位址，**Translation model** 填該服務的模型名稱。
+
+| 服務 | Provider URL | Translation model（範例） |
+| --- | --- | --- |
+| Ollama（本機，免 key） | `http://localhost:11434/v1` | `qwen2.5:7b` |
+| LM Studio（本機，免 key） | `http://localhost:1234/v1` | 已載入模型的名稱 |
+| OpenRouter | `https://openrouter.ai/api/v1` | 帶 `:free` 後綴的模型 |
+| Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
+
+API key 存在系統的安全儲存區，不會顯示在 `/config` 中。在終端機裡設定：
+
+```sh
+echo '{"providerApiKey":"sk-..."}' | claude plugin configure lingo --values-stdin
+```
+
+請求經由 Claude Code 自己的網路層（`$.http.fetch`）送出，所屬組織的網路存取政策同樣適用。推理模型輸出的 `<think>` 部分會從譯文中去掉。
+
 ## 費用與隱私
 
-每次翻譯皆透過 Claude Code 內建的 `$.model.complete` API 進行一次簡短的 `haiku` 模型呼叫——直接使用你現有的 Claude 帳號與計費，不依賴任何外部翻譯服務，也不需要額外網路權限。單則訊息成本極低，且已是目標語言的訊息在多數情況下完全不消耗額度。
+每次翻譯皆透過 Claude Code 內建的 `$.model.complete` API 進行一次簡短的 `haiku` 模型呼叫——直接使用你現有的 Claude 帳號與計費，不依賴任何外部翻譯服務，也不需要額外網路權限。單則訊息成本極低，且已是目標語言的訊息在多數情況下完全不消耗額度。使用 OpenAI 相容的 provider 時，訊息會傳送到你設定的服務，費用和隱私條款以該服務為準。
 
 ## 開發與測試
 

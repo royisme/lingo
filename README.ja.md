@@ -42,6 +42,8 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 | **Suggest fixes while typing** | `true` | 下書きがすでに学習中の言語で書かれているとき、より自然な言い方をプロンプト欄の上に提案します。**Use** で下書きを置き換えます |
 | **Translate my prompts** | `true` | 送信した各プロンプトの下に翻訳を表示します |
 | **Translate Claude's replies** | `true` | Claude の各テキスト返信の下に翻訳を表示します |
+| **Provider** | `Claude` | `Claude`（Claude Code 経由、あなたのアカウント）または `OpenAI-compatible`（下記参照） |
+| **Provider URL** | `http://localhost:11434/v1` | `OpenAI-compatible` のとき：`/v1` で終わる API のベース URL |
 | **Translation model** | `haiku` | 翻訳に使うモデル。エイリアスか完全な ID（`claude-haiku-4-5`、またはゲートウェイのモデル名）。`haiku` が使えない環境では完全な ID を指定します |
 
 `/config` を開かずにいつでも切り替えることもできます：
@@ -55,9 +57,28 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 - **すでにターゲット言語で書かれているメッセージ**：たとえば英語を学習中でメッセージがすでに英語の場合、何も表示されません。同じアルファベットを使う言語間（英語とフランス語など）では、可能な限りローカルで判定し、判断がつかない場合のみモデルに確認します。
 - **コード、パス、URL**：`` `getUserById` `` だけのメッセージやコードブロックは、モデルを呼び出さずにスキップされます。文章中のインラインコード、ファイルパス、フラグなどはそのまま保持されます。
 
+## ほかのプロバイダー（OpenAI 互換）
+
+OpenAI の chat-completions API に対応したエンドポイントなら翻訳に使えます。ローカルの **Ollama** や **LM Studio**、**OpenRouter**、**Groq** などです。**Provider** を `OpenAI-compatible` にし、**Provider URL** に API のベース URL、**Translation model** にそのサービスのモデル名を設定します。
+
+| サービス | Provider URL | Translation model（例） |
+| --- | --- | --- |
+| Ollama（ローカル、キー不要） | `http://localhost:11434/v1` | `qwen2.5:7b` |
+| LM Studio（ローカル、キー不要） | `http://localhost:1234/v1` | 読み込んだモデルの名前 |
+| OpenRouter | `https://openrouter.ai/api/v1` | `:free` が付いたモデル |
+| Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
+
+API キーは `/config` ではなく安全なストレージに保存されます。ターミナルで設定します：
+
+```sh
+echo '{"providerApiKey":"sk-..."}' | claude plugin configure lingo --values-stdin
+```
+
+リクエストは Claude Code 自身のネットワーク層（`$.http.fetch`）を通るため、組織の Web アクセスポリシーが適用されます。推論モデルの `<think>` 部分は訳文から取り除かれます。
+
 ## コストとプライバシー
 
-各翻訳は Claude Code 自身の `$.model.complete` API を通じて Claude の `haiku` モデルを短く呼び出すだけです。既存のアカウントと請求がそのまま使われ、外部の翻訳サービスやネットワーク権限は一切不要です。1メッセージあたりのコストはごくわずかで、すでにターゲット言語で書かれたメッセージは多くの場合コストがかかりません。
+各翻訳は Claude Code 自身の `$.model.complete` API を通じて Claude の `haiku` モデルを短く呼び出すだけです。既存のアカウントと請求がそのまま使われ、外部の翻訳サービスやネットワーク権限は一切不要です。1メッセージあたりのコストはごくわずかで、すでにターゲット言語で書かれたメッセージは多くの場合コストがかかりません。OpenAI 互換のプロバイダーを使う場合、メッセージは設定したエンドポイントに送られ、そのサービスの料金とプライバシー規約が適用されます。
 
 ## 開発
 

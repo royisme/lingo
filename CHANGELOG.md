@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.3.0] - 2026-11-06
+
+### Added
+- **OpenAI-compatible providers**: translate with a local Ollama or LM Studio, OpenRouter, Groq or any endpoint that speaks the chat-completions API. New `/config` rows `Lingo · Provider` and `Lingo · Provider URL`; the API key is a secure option (`claude plugin configure lingo`). Pacing, cooldown, retries and failure messages work the same as with Claude; a reasoning model's `<think>` block is dropped.
+
 ## [0.2.3] - 2026-11-06
 
 ### Fixed

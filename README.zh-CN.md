@@ -42,6 +42,8 @@ claude plugin install lingo --marketplace royisme/lingo
 | **Suggest fixes while typing** | `true` | 草稿已经是你在学的语言时，在输入框上方给出更自然的写法；点 **Use** 直接替换草稿 |
 | **Translate my prompts** | `true` | 在你发送的每条提问下方展示译文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每条文本回复下方展示译文 |
+| **Provider** | `Claude` | `Claude`（经由 Claude Code，用你的账号）或 `OpenAI-compatible`（见下文） |
+| **Provider URL** | `http://localhost:11434/v1` | 选 `OpenAI-compatible` 时：API 地址，以 `/v1` 结尾 |
 | **Translation model** | `haiku` | 负责翻译的模型：别名或完整 id（如 `claude-haiku-4-5`，或网关提供的模型名）。`haiku` 在你的账号或网关上不可用时，填完整 id |
 
 你也可以随时切换，无需打开 `/config`：
@@ -55,9 +57,28 @@ claude plugin install lingo --marketplace royisme/lingo
 - **已经是目标语言的消息**：例如你正在学习英语，而消息本身已经是英文时，不会展示多余译文。对于共用拉丁字母的语言（如英语和法语），Lingo 会优先在本地快速判断，不确定时才交由模型识别。
 - **纯代码、路径与链接**：仅包含 `` `getUserById` `` 或代码块的消息会直接跳过，不调用模型。在普通文本中，行内代码、文件路径、命令行参数与技术标识符都会原样保留。
 
+## 其他 provider（OpenAI 兼容）
+
+Lingo 可以用任何支持 OpenAI chat-completions 接口的服务来翻译：本地的 **Ollama**、**LM Studio**，以及 **OpenRouter**、**Groq** 等。把 **Provider** 设为 `OpenAI-compatible`，**Provider URL** 填 API 地址，**Translation model** 填该服务的模型名。
+
+| 服务 | Provider URL | Translation model（示例） |
+| --- | --- | --- |
+| Ollama（本地，无需 key） | `http://localhost:11434/v1` | `qwen2.5:7b` |
+| LM Studio（本地，无需 key） | `http://localhost:1234/v1` | 已加载模型的名字 |
+| OpenRouter | `https://openrouter.ai/api/v1` | 带 `:free` 后缀的模型 |
+| Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
+
+API key 存在系统的安全存储里，不在 `/config` 中显示。在终端里设置：
+
+```sh
+echo '{"providerApiKey":"sk-..."}' | claude plugin configure lingo --values-stdin
+```
+
+请求经由 Claude Code 自己的网络层（`$.http.fetch`）发出，所在组织的网络访问策略同样适用。推理模型输出的 `<think>` 部分会从译文中去掉。
+
 ## 费用与隐私
 
-每次翻译仅通过 Claude Code 内置的 `$.model.complete` 接口发起一次简短的 `haiku` 模型调用——复用你现有的 Claude 账号与计费，不依赖任何第三方外部翻译服务，也不需要额外网络权限。单条消息的成本极低，且本身已经是目标语言的消息通常不产生任何模型调用开销。
+每次翻译仅通过 Claude Code 内置的 `$.model.complete` 接口发起一次简短的 `haiku` 模型调用——复用你现有的 Claude 账号与计费，不依赖任何第三方外部翻译服务，也不需要额外网络权限。单条消息的成本极低，且本身已经是目标语言的消息通常不产生任何模型调用开销。使用 OpenAI 兼容的 provider 时，消息会发送到你设置的服务，费用和隐私条款以该服务为准。
 
 ## 本地开发与验证
 

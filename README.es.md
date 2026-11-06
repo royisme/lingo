@@ -42,6 +42,8 @@ Abre `/config` y busca **Lingo**:
 | **Suggest fixes while typing** | `true` | Si tu borrador ya está en el idioma que aprendes, sugiere una versión más natural sobre el cuadro de texto; **Use** la coloca en el cuadro |
 | **Translate my prompts** | `true` | Muestra una traducción debajo de cada prompt que envías |
 | **Translate Claude's replies** | `true` | Muestra una traducción debajo de cada respuesta de texto de Claude |
+| **Provider** | `Claude` | `Claude` (a través de Claude Code, tu cuenta) u `OpenAI-compatible` (ver abajo) |
+| **Provider URL** | `http://localhost:11434/v1` | Con `OpenAI-compatible`: la base de la API, terminada en `/v1` |
 | **Translation model** | `haiku` | El modelo que traduce: un alias o un id completo (`claude-haiku-4-5`, o el nombre del modelo de tu pasarela). Usa un id completo si `haiku` no está disponible para ti |
 
 O cambia en cualquier momento sin abrir `/config`:
@@ -55,9 +57,28 @@ O cambia en cualquier momento sin abrir `/config`:
 - **Ya está en tu idioma de destino.** Si estás aprendiendo inglés y un mensaje ya está en inglés, no se muestra nada. Para idiomas que comparten alfabeto (por ejemplo, inglés y francés), Lingo lo comprueba localmente cuando puede y consulta al modelo cuando no está seguro.
 - **Código, rutas y URL.** Un mensaje que sea solo `` `getUserById` `` o un bloque de código se omite sin llamar al modelo. Dentro del texto, el código en línea, las rutas de archivos y los flags permanecen intactos.
 
+## Otros proveedores (compatibles con OpenAI)
+
+Lingo puede traducir con cualquier servicio que hable la API chat-completions de OpenAI: **Ollama** o **LM Studio** en local, **OpenRouter**, **Groq** y muchos más. Pon **Provider** en `OpenAI-compatible`, **Provider URL** en la base de la API y **Translation model** en el nombre del modelo del servicio.
+
+| Servicio | Provider URL | Translation model (ejemplo) |
+| --- | --- | --- |
+| Ollama (local, sin clave) | `http://localhost:11434/v1` | `qwen2.5:7b` |
+| LM Studio (local, sin clave) | `http://localhost:1234/v1` | el nombre del modelo cargado |
+| OpenRouter | `https://openrouter.ai/api/v1` | un modelo `:free` |
+| Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
+
+La clave de API se guarda en el almacenamiento seguro, no en `/config`. Configúrala desde tu terminal:
+
+```sh
+echo '{"providerApiKey":"sk-..."}' | claude plugin configure lingo --values-stdin
+```
+
+Las solicitudes pasan por la capa de red de Claude Code (`$.http.fetch`), así que se aplica la política de acceso web de tu organización. El bloque `<think>` de un modelo de razonamiento se elimina de la traducción.
+
 ## Coste y privacidad
 
-Cada traducción es una llamada breve al modelo `haiku` de Claude a través de la propia API `$.model.complete` de Claude Code — la misma cuenta y facturación que ya utilizas, sin servicios de traducción externos ni permisos de red. Un mensaje típico cuesta una fracción de centavo; los mensajes que ya están en tu idioma de destino no cuestan nada en la mayoría de los casos.
+Cada traducción es una llamada breve al modelo `haiku` de Claude a través de la propia API `$.model.complete` de Claude Code — la misma cuenta y facturación que ya utilizas, sin servicios de traducción externos ni permisos de red. Un mensaje típico cuesta una fracción de centavo; los mensajes que ya están en tu idioma de destino no cuestan nada en la mayoría de los casos. Con un proveedor compatible con OpenAI, los mensajes van al servicio que configures, y se aplican su precio y sus condiciones de privacidad.
 
 ## Desarrollo
 
