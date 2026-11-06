@@ -76,16 +76,17 @@ function stopwordHits(words: readonly string[], code: Code): number {
 }
 
 /**
- * What to do with a text for a target language:
- * - `skip`: nothing worth translating, or already in the target language;
- * - `translate`: clearly another language;
- * - `ask`: can't tell locally (same script); the model decides, and may answer SAME.
+ * Which language a text is in, as far as it can be told locally:
+ * - `empty`: nothing worth reading (code, a path, a word or two);
+ * - `target`: the target language;
+ * - `other`: clearly another language;
+ * - `unsure`: same script, no clear sign (the model decides).
  */
-export function decide(text: string, target: Language): 'skip' | 'translate' | 'ask' {
+export function classify(text: string, target: Language): 'empty' | 'target' | 'other' | 'unsure' {
   const p = prose(text)
   const c = scriptCounts(p)
   const total = c.han + c.kana + c.hangul + c.cyrillic + c.latin
-  if (total < 2) return 'skip'
+  if (total < 2) return 'empty'
 
   // CJK characters carry about a word each; Latin and Cyrillic letters about a fifth of one.
   const weight: Record<Script, number> = {
@@ -105,41 +106,149 @@ export function decide(text: string, target: Language): 'skip' | 'translate' | '
 
   if (dominant !== target.script) {
     // Mostly another script; a few CJK words inside an English sentence don't count.
-    return share >= 0.5 || weight[target.script] < 2 ? 'translate' : 'skip'
+    return share >= 0.5 || weight[target.script] < 2 ? 'other' : 'target'
   }
-  if (target.script === 'han') return 'ask' // Simplified vs Traditional: the model knows
-  if (target.script !== 'latin') return 'skip'
+  if (target.script === 'han') return 'unsure' // Simplified vs Traditional: the model knows
+  if (target.script !== 'latin') return 'target'
 
   const nonLatin = c.han + c.kana + c.hangul + c.cyrillic
-  if (nonLatin >= 4) return 'translate'
+  if (nonLatin >= 4) return 'other'
 
   // Latin vs Latin: compare function words.
   const words = p.toLowerCase().match(/[a-zÀ-ɏḀ-ỿ']+/g) ?? []
-  if (words.length < 3) return 'skip'
+  if (words.length < 3) return 'empty'
   const mine = stopwordHits(words, target.code)
   const best = LANGUAGES.filter(l => l.script === 'latin' && l.code !== target.code).reduce(
     (m, l) => Math.max(m, stopwordHits(words, l.code)),
     0,
   )
-  if (mine >= 2 && mine >= best) return 'skip'
-  if (best >= 2 && best > mine * 1.5) return 'translate'
-  return 'ask'
+  if (mine >= 2 && mine >= best) return 'target'
+  if (best >= 2 && best > mine * 1.5) return 'other'
+  return 'unsure'
+}
+
+/**
+ * What to do with a text for a target language:
+ * - `skip`: nothing worth translating, or already in the target language;
+ * - `translate`: clearly another language;
+ * - `ask`: can't tell locally (same script); the model decides, and may answer SAME.
+ */
+export function decide(text: string, target: Language): 'skip' | 'translate' | 'ask' {
+  const c = classify(text, target)
+  return c === 'other' ? 'translate' : c === 'unsure' ? 'ask' : 'skip'
+}
+
+/** A slash command or a shell line (`/…`, `!…`): not prose to translate or polish. */
+export function isCommand(text: string): boolean {
+  return /^\s*[/!]/.test(text)
 }
 
 /** The model's answer for a text already in the target language. */
 export const SAME = '<<SAME>>'
 
+/** The model's prefix for a better version of a draft already in the target language. */
+export const FIX = '<<FIX>>'
+
+/** What a gloss draws in place of a fenced code block. */
+export const CODE = '[code]'
+
+/**
+ * What the model must never translate or rewrite, tried in this order: fenced code, inline
+ * code, URLs, slash commands and skills (`/review`, `/plugin:skill`, also a path such as
+ * `/tmp/x`), and @-mentions (`@src/a.ts`, `@agent`). A command or mention counts only where a
+ * word does not run into it (`先用/review看` counts; `and/or`, `./src` and `me@example.com` do not).
+ */
+const KEEP =
+  /```[\s\S]*?(?:```|$)|`[^`\n]+`|https?:\/\/[^\s)\]}>"'\u3000-\uffff]*[^\s)\]}>"'\u3000-\uffff.,;:!?]|(?<![\w./:~-])\/[A-Za-z][\w:-]*(?:[./][\w:-]+)*|(?<![\w.@-])@[\w-]+(?:[./:][\w-]+)*/g
+
+const MARK = /⟦(\d+)⟧/g
+
+/** A text as the model is sent it: each kept piece a `⟦n⟧` marker, the pieces in order. */
+export type Shielded = { text: string; kept: readonly string[] }
+
+/** Puts a marker in place of each piece the model must leave alone (KEEP). */
+export function shield(text: string): Shielded {
+  const kept: string[] = []
+  const out = text
+    .trim()
+    .replace(KEEP, piece => {
+      kept.push(piece)
+      return `⟦${kept.length}⟧`
+    })
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return { text: out, kept }
+}
+
+/** For drawing: each marker back as its piece, a fenced block as `[code]`; unknown markers dropped. */
+export function unshieldForDisplay(text: string, kept: readonly string[]): string {
+  return text.replace(MARK, (_, n: string) => {
+    const piece = kept[Number(n) - 1]
+    return piece === undefined ? '' : piece.startsWith('```') ? CODE : piece
+  })
+}
+
+/**
+ * For the prompt box: every piece back exactly as the person wrote it. Undefined unless each
+ * marker came back exactly once, so a command, mention or code block is never lost or doubled.
+ */
+export function unshieldExact(text: string, kept: readonly string[]): string | undefined {
+  const seen = (text.match(MARK) ?? []).map(m => Number(m.slice(1, -1)))
+  if (seen.length !== kept.length || new Set(seen).size !== kept.length) return undefined
+  if (seen.some(n => n < 1 || n > kept.length)) return undefined
+  return text.replace(MARK, (_, n: string) => kept[Number(n) - 1] ?? '').trim()
+}
+
+/** A pasted-text or image chip, which the prompt box would not get back from plain text. */
+export function hasChip(text: string): boolean {
+  return /\[(?:Pasted text|Image) #\d+/.test(text)
+}
+
+const MARKERS = 'Each ⟦n⟧ marker stands for code, a command, a URL or a reference: keep every marker exactly as written, once, where it belongs.'
+
+/** A translation as a gloss draws it: plain text, no Markdown marks left over. */
+export function plain(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '$2')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 export function systemPrompt(target: Language, allowSame: boolean): string {
   return [
     `You translate messages from a conversation between a software developer and a coding assistant into natural, idiomatic ${target.prompt}.`,
     'Output only the translation: no quotes, notes, or alternatives.',
-    'Keep Markdown structure, code, file paths, identifiers, commands and numbers exactly as they are.',
+    'Write plain text without Markdown formatting (no headings, bold, tables or code fences); keep one line per paragraph or list item.',
+    MARKERS,
+    'Keep file paths, identifiers, slash commands (/name), @mentions and numbers exactly as they are.',
     allowSame
       ? `If the message is already written in ${target.prompt}, output exactly ${SAME} and nothing else.`
       : '',
   ]
     .filter(Boolean)
     .join(' ')
+}
+
+/**
+ * For a draft the developer writes in the language they are learning: SAME when it is
+ * natural, else FIX and a better version. `mayTranslate`: the draft may not be in the
+ * target at all (same script, unsure); then the answer is a plain translation.
+ */
+export function polishPrompt(target: Language, mayTranslate: boolean): string {
+  return [
+    `You help a software developer who is learning ${target.prompt} write messages to a coding assistant.`,
+    mayTranslate
+      ? `If the message is not written in ${target.prompt}, output only its translation into natural, idiomatic ${target.prompt}. If it is written in ${target.prompt}:`
+      : `The message is written in ${target.prompt}.`,
+    `if it is already correct and natural, output exactly ${SAME} and nothing else;`,
+    `otherwise output ${FIX} followed by the corrected, natural version, keeping the meaning, tone and register.`,
+    'Change only what is wrong or clearly unnatural; do not rephrase what is fine.',
+    'Write plain text without Markdown formatting and without explanations.',
+    MARKERS,
+    'Keep file paths, identifiers, slash commands (/name), @mentions and numbers exactly as they are.',
+  ].join(' ')
 }
 
 /** FNV-1a, enough to key a cache. */

@@ -39,6 +39,7 @@ Open `/config` and look for **Lingo**:
 | --- | --- | --- |
 | **Target language** | `English` | `English`, `Français`, `Español`, `Deutsch`, `Português`, `日本語`, `한국어`, `简体中文`, `繁體中文`, `Русский`, `Tiếng Việt`, or `Off` |
 | **Preview while typing** | `true` | Show a live translation above the prompt box after a brief pause |
+| **Suggest fixes while typing** | `true` | When your draft is already in the language you're learning, suggest a more natural version above the prompt box; **Use** puts it in the box |
 | **Translate my prompts** | `true` | Show a translation under each prompt you send |
 | **Translate Claude's replies** | `true` | Show a translation under each of Claude's text replies |
 
