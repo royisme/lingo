@@ -1,6 +1,6 @@
 {
   "name": "lingo",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Learn a language while you code: shows a translation under your prompts and Claude's replies, and a live preview while you type.",
   "author": {
     "name": "Roy",
@@ -46,6 +46,12 @@
       "type": "boolean",
       "title": "Lingo · Preview while typing",
       "description": "Show a translation of your draft above the prompt box.",
+      "default": true
+    },
+    "polishWhileTyping": {
+      "type": "boolean",
+      "title": "Lingo · Suggest fixes while typing",
+      "description": "When your draft is already in the language you're learning, suggest a more natural version above the prompt box; Use puts it in the box.",
       "default": true
     },
     "translatePrompts": {

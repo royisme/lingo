@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { CODE, SAME, decide, findLanguage, forModel, hash, plain, prose } from './lang'
+import { CODE, FIX, SAME, classify, decide, findLanguage, forModel, hash, isCommand, plain, prose, restoreCode } from './lang'
 
 const USAGE = {
   input_tokens: 10,
@@ -535,5 +535,146 @@ test('if that preview fails, the sent prompt shows Retry', async ($, on) => {
   await clock.settle()
   expect(calls).toBe(2)
   expect((await ui.find({ type: 'Text', text: /logs for me/ }))?.text).toBe('Check the logs for me.')
+  await ui.unmount()
+})
+
+// ---- polish: drafts already in the target language ---------------------------
+
+const BAND = {
+  plugin: 'lingo',
+  surface: 'desktop',
+  component: 'AbovePrompt',
+  requestId: 'band-polish',
+  props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80 },
+} as any
+
+test('classify, isCommand and restoreCode', () => {
+  expect(classify('Please help me check why login api is timeout', EN)).toBe('target')
+  expect(classify('帮我看一下登录超时', EN)).toBe('other')
+  expect(classify('Run lint again quickly', EN)).toBe('unsure')
+  expect(classify('`getUserById`', EN)).toBe('empty')
+  expect(isCommand('/lingo fr')).toBe(true)
+  expect(isCommand('!ls -la')).toBe(true)
+  expect(isCommand('why is /tmp full')).toBe(false)
+
+  const src = 'pls fix this:\n```ts\nconst a = 1\n```\nit dont work'
+  const fixed = `Please fix this:\n${CODE}\nIt doesn't work.`
+  expect(restoreCode(src, fixed)).toBe("Please fix this:\n```ts\nconst a = 1\n```\nIt doesn't work.")
+  expect(restoreCode(src, 'Please fix this. It does not work.')).toBeUndefined() // the block was lost
+  expect(restoreCode('[Pasted text #1 +20 lines] why fail', 'Why does it fail?')).toBeUndefined()
+})
+
+test('a draft in the target language gets a better version, and Use puts it in the box', async ($, on) => {
+  const clock = mock.clock(on)
+  let box = 'Please help me check why login api is timeout'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const systems: string[] = []
+  on('model.complete', (_: any, e: any) => {
+    systems.push(e.system)
+    return { value: { isAnswered: true, text: `${FIX} Please help me check why the login API times out.`, usage: USAGE } }
+  })
+  const fills: string[] = []
+  on('prompt.fill', (_: any, e: any) => {
+    fills.push(e.text)
+    box = e.text
+    return { isFilled: true }
+  })
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  expect(systems.length).toBe(1)
+  expect(systems[0]).toContain('learning English')
+
+  const ui = await $.ui.mount(BAND)
+  expect((await ui.find({ type: 'Text', text: /^Better$/ }))?.text).toBe('Better')
+  expect((await ui.find({ type: 'Text', text: /times out/ }))?.text).toBe('Please help me check why the login API times out.')
+  await ui.press({ key: 'lingo-use' })
+  await clock.settle()
+  expect(fills).toEqual(['Please help me check why the login API times out.'])
+  expect(await ui.find({ type: 'Text', text: /Better/ })).toBeUndefined()
+
+  // The box now holds the better version: the change it raises asks nothing more.
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  expect(systems.length).toBe(1)
+  await ui.unmount()
+})
+
+test('a natural draft shows nothing, not even while it is checked', async ($, on) => {
+  const clock = mock.clock(on)
+  const box = 'Why does the login endpoint time out after the deploy?'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  let finish: () => void = () => {}
+  on('model.complete', () => new Promise(res => (finish = () => res({ value: { isAnswered: true, text: SAME, usage: USAGE } }))))
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  const ui = await $.ui.mount(BAND)
+  expect(await ui.find({ type: 'Text', text: /Translat|Better|Preview/ })).toBeUndefined()
+  finish()
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /Translat|Better|Preview/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a fix keeps the draft code blocks when used', async ($, on) => {
+  const clock = mock.clock(on)
+  let box = 'why this function is return null:\n```ts\nfunction f() { return null }\n```\nthe test is fail'
+  on('prompt.read', () => ({ value: { text: box, cursor: 0 } }))
+  const sent: string[] = []
+  on('model.complete', (_: any, e: any) => {
+    sent.push(e.prompt)
+    return { value: { isAnswered: true, text: `${FIX} Why does this function return null?\n${CODE}\nThe test fails.`, usage: USAGE } }
+  })
+  const fills: string[] = []
+  on('prompt.fill', (_: any, e: any) => {
+    fills.push(e.text)
+    box = e.text
+    return { isFilled: true }
+  })
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+
+  await ($.prompt as any).change({ text: box, cursor: 0, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  expect(sent[0]).not.toContain('return null }')
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'lingo-use' })
+  await clock.settle()
+  expect(fills).toEqual(['Why does this function return null?\n```ts\nfunction f() { return null }\n```\nThe test fails.'])
+  await ui.unmount()
+})
+
+test('suggestions off: a draft in the target language asks nothing', { options: { polishWhileTyping: false } } as any, async ($, on) => {
+  const clock = mock.clock(on)
+  const box = 'Please help me check why login api is timeout'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const asked = answer(on, `${FIX} x`)
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  expect(asked.length).toBe(0)
+})
+
+test('slash commands and shell lines get no preview and no gloss', async ($, on) => {
+  const clock = mock.clock(on)
+  const box = '/compact 帮我总结一下刚才的讨论'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const asked = answer(on, 'x')
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  await ($.prompt as any).submit({ text: box, origin: { kind: 'composer' } })
+  const ui = await $.ui.mount(userRow(box, 'desktop', 'm-cmd'))
+  await clock.settle()
+  expect(asked.length).toBe(0)
+  expect(await ui.find({ type: 'Text', text: /Translat/ })).toBeUndefined()
   await ui.unmount()
 })

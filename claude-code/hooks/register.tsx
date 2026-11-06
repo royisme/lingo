@@ -2,7 +2,22 @@ import { atom, read } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register, RenderElement, RenderInput } from 'claude-code'
 
 import type { Draft, Gloss } from '../types'
-import { LANGUAGES, OFF, SAME, decide, findLanguage, forModel, hash, plain, systemPrompt } from './lang'
+import {
+  FIX,
+  LANGUAGES,
+  OFF,
+  SAME,
+  classify,
+  decide,
+  findLanguage,
+  forModel,
+  hash,
+  isCommand,
+  plain,
+  polishPrompt,
+  restoreCode,
+  systemPrompt,
+} from './lang'
 import type { Language } from './lang'
 
 // ---- settings (from /config; a change there reloads this module) -----------
@@ -10,6 +25,7 @@ import type { Language } from './lang'
 type Settings = {
   target: Language | undefined
   preview: boolean
+  polish: boolean
   prompts: boolean
   replies: boolean
 }
@@ -21,6 +37,7 @@ function readSettings(options: PluginOptions): Settings {
   return {
     target: findLanguage(String(options.targetLanguage ?? 'English')),
     preview: bool(options.previewWhileTyping),
+    polish: bool(options.polishWhileTyping),
     prompts: bool(options.translatePrompts),
     replies: bool(options.translateReplies),
   }
@@ -47,6 +64,8 @@ const TEXT = {
   failed: 'Translation failed',
   retry: 'Translation failed · Retry',
   preview: 'Preview',
+  better: 'Better',
+  use: 'Use',
   hide: 'Hide this translation',
   off: 'Turn off Lingo',
   settings: 'Settings…',
@@ -88,6 +107,30 @@ async function translate($: EngineInterface, text: string, target: Language, all
     if (allowSame && out === SAME) return { status: 'same', text: '' } as const
     const cut = r.usage.output_tokens >= MAX_TOKENS ? ' …' : '' // stopped at the cap
     return { status: 'done', text: plain(out) + cut } as const
+  } catch {
+    return { status: 'error', text: '' } as const
+  }
+}
+
+/** A draft the developer wrote in the target language: SAME, or a better version (FIX). */
+async function polish($: EngineInterface, text: string, target: Language, mayTranslate: boolean) {
+  try {
+    const r = await $.model.complete({
+      model: 'haiku',
+      system: polishPrompt(target, mayTranslate),
+      prompt: forModel(text),
+      maxTokens: MAX_TOKENS,
+      timeoutMs: 30000,
+    })
+    if (!r.isAnswered) return { status: 'error', text: '' } as const
+    const out = r.text.trim()
+    if (out === SAME) return { status: 'same', text: '' } as const
+    const marked = out.startsWith(FIX)
+    if (!marked && mayTranslate) return { status: 'done', text: plain(out) } as const
+    // A fix keeps the draft's own marks (backticks, emphasis): it may replace the draft.
+    const fixed = (marked ? out.slice(FIX.length) : out).trim()
+    if (!fixed || fixed === forModel(text)) return { status: 'same', text: '' } as const
+    return { status: 'fix', text: fixed } as const
   } catch {
     return { status: 'error', text: '' } as const
   }
@@ -251,45 +294,78 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
 
 // ---- live preview ----------------------------------------------------------
 
+type PreviewMode = 'translate' | 'ask' | 'polish' | 'either'
+
+/**
+ * What the band does for a draft: translate it (another language), polish it (the target
+ * language), or let the model tell the two apart (`ask` / `either`, same script, unsure).
+ */
+function previewMode(src: string, target: Language): PreviewMode | undefined {
+  if (isCommand(src)) return undefined
+  switch (classify(src, target)) {
+    case 'other':
+      return settings.preview ? 'translate' : undefined
+    case 'target':
+      return settings.polish ? 'polish' : undefined
+    case 'unsure':
+      return settings.polish ? 'either' : settings.preview ? 'ask' : undefined
+    default:
+      return undefined
+  }
+}
+
 async function runPreview($: EngineInterface) {
   const target = settings.target
   const src = (await $.prompt.read()).text.trim()
-  const verdict = target ? decide(src, target) : 'skip'
-  if (!target || !settings.preview || verdict === 'skip') {
+  const mode = target ? previewMode(src, target) : undefined
+  if (!target || !mode) {
     if ((await $.state.get(DRAFT)).value) await $.state.set(DRAFT, null)
     return
   }
+  const kind = mode === 'translate' || mode === 'ask' ? 'translate' : 'polish'
   const held = (await $.state.get(DRAFT)).value
-  // A settled answer for this very draft (a translation, or "already in the target") is kept:
-  // a pause or a caret move does not ask again.
-  if ((held && held.src === src && (held.status === 'done' || held.status === 'same')) || previewInFlight === src) return
+  // A settled answer for this very draft is kept: a pause or a caret move does not ask again.
+  const settled = held?.src === src && held.status !== 'pending' && held.status !== 'error'
+  if (settled || previewInFlight === src) return
   previewInFlight = src
   try {
     // The prompt's gloss may already hold this text (a draft recalled from history).
     const id = glossId(target, src)
     const ref = { ...GLOSS, id }
     const known = (await $.state.get(ref)).value
-    if (known?.status === 'done' || known?.status === 'same') {
-      await $.state.set(DRAFT, { src, status: known.status, text: known.text } satisfies Draft)
+    if (known?.status === 'done' || (known?.status === 'same' && kind === 'translate')) {
+      await $.state.set(DRAFT, { src, status: known.status, text: known.text, kind: 'translate' } satisfies Draft)
       return
     }
-    const prev = held?.status === 'done' ? held.text : ''
-    await $.state.set(DRAFT, { src, status: 'pending', text: prev } satisfies Draft)
+    // Known to be in the target already: only the polish is left to ask.
+    const mayTranslate = mode === 'either' && known?.status !== 'same'
+    const shown = held?.status === 'done' || held?.status === 'fix'
+    await $.state.set(DRAFT, {
+      src,
+      status: 'pending',
+      text: shown ? held.text : '',
+      kind: shown ? held.kind : kind,
+    } satisfies Draft)
     previewGloss = id
-    let r: Gloss
+    let r: { status: 'done' | 'fix' | 'same' | 'error'; text: string }
     try {
-      r = await translate($, src, target, verdict === 'ask')
+      r = kind === 'translate' ? await translate($, src, target, mode === 'ask') : await polish($, src, target, mayTranslate)
     } finally {
       if (previewGloss === id) previewGloss = undefined
     }
     // Settled answers go to the gloss too, so sending this draft costs no second call;
     // an error goes there only when the sent prompt was waiting on it (it shows Retry).
+    // A fix means the draft is in the target: its gloss is `same`.
+    const gloss: Gloss = r.status === 'fix' ? { status: 'same', text: '' } : { status: r.status, text: r.text }
     const waited = awaitingPreview.delete(id)
-    if ((r.status !== 'error' || waited) && !inFlight.has(id)) await $.state.set(ref, r satisfies Gloss)
+    if ((gloss.status !== 'error' || waited) && !inFlight.has(id)) await $.state.set(ref, gloss)
     // The person may have typed on meanwhile: keep only the answer for the newest draft.
     if ((await $.prompt.read()).text.trim() !== src) return
-    if (settings.target?.code !== target.code || !settings.preview) return
-    await $.state.set(DRAFT, { src, status: r.status, text: r.text } satisfies Draft)
+    if (settings.target?.code !== target.code) return
+    // An unsure draft may turn out to be another language while only the polish is on.
+    if (r.status === 'done' && !settings.preview) r = { status: 'same', text: '' }
+    const answerKind = r.status === 'done' ? 'translate' : r.status === 'fix' ? 'polish' : kind
+    await $.state.set(DRAFT, { src, status: r.status, text: r.text, kind: answerKind } satisfies Draft)
   } finally {
     if (previewInFlight === src) previewInFlight = undefined
   }
@@ -297,8 +373,17 @@ async function runPreview($: EngineInterface) {
 
 function queuePreview($: EngineInterface) {
   previewTimer?.cancel()
-  if (!settings.target || !settings.preview) return
+  if (!settings.target || !(settings.preview || settings.polish)) return
   previewTimer = $.clock.after(PREVIEW_DELAY_MS, () => void runPreview($))
+}
+
+/** Puts the better version in the prompt box, code blocks and all; it is not checked again. */
+async function useFix($: EngineInterface, src: string, fixed: string) {
+  const text = restoreCode(src, fixed)
+  if (text === undefined) return
+  previewTimer?.cancel()
+  await $.state.set(DRAFT, { src: text.trim(), status: 'same', text: '', kind: 'polish' } satisfies Draft)
+  await $.prompt.fill({ text })
 }
 
 async function clearPreview($: EngineInterface) {
@@ -338,14 +423,14 @@ export const register: Register = (on, options) => {
   // Start translating a prompt the moment it is sent, so its row finds it ready.
   on('prompt.submit', async ($, e, next) => {
     const target = settings.target
-    if (target && settings.prompts) schedule($, e.text, target)
+    if (target && settings.prompts && !isCommand(e.text)) schedule($, e.text, target)
     await clearPreview($)
     return next(e)
   }).catch(($, e, next) => next(e)) // never block a prompt over a translation
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     const row = await next(e)
-    if (!settings.prompts || e.props.origin.kind !== 'composer') return row
+    if (!settings.prompts || e.props.origin.kind !== 'composer' || isCommand(e.props.text)) return row
     return glossRow($, e, row, e.props.text)
   })
 
@@ -372,16 +457,23 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const target = settings.target
     const d = await read($, draft)
-    if (!target || !settings.preview || !d || d.status === 'same' || e.props.hasSurvey) return next(e)
+    if (!target || !d || d.status === 'same' || e.props.hasSurvey) return next(e)
+    const polishing = d.kind === 'polish'
+    if (!(polishing ? settings.polish : settings.preview)) return next(e)
+    // Checking a draft written in the target stays quiet until there is something to suggest.
+    if (polishing && (d.status === 'error' || (d.status === 'pending' && !d.text))) return next(e)
 
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const src = d.src
+    const fixed = d.text
+    const usable = polishing && d.status === 'fix' && restoreCode(src, fixed) !== undefined
     return (
       <Box flexDirection="row" gap={1}>
         <Text color={ACCENT} bold size="caption">
           {target.tag}
         </Text>
         <Text dimColor size="caption">
-          {TEXT.preview}
+          {polishing ? TEXT.better : TEXT.preview}
         </Text>
         <Box flexShrink={1}>
           {d.status === 'error' ? (
@@ -394,6 +486,11 @@ export const register: Register = (on, options) => {
             <Text dimColor>{TEXT.translating}</Text>
           )}
         </Box>
+        {usable && (
+          <Button key="lingo-use" plain hotkey="u" onPress={() => void useFix($, src, fixed)}>
+            {TEXT.use}
+          </Button>
+        )}
       </Box>
     )
   })

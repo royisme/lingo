@@ -39,6 +39,7 @@ Ouvrez `/config` et cherchez **Lingo** :
 | --- | --- | --- |
 | **Target language** | `English` | `English`, `Français`, `Español`, `Deutsch`, `Português`, `日本語`, `한국어`, `简体中文`, `繁體中文`, `Русский`, `Tiếng Việt` ou `Off` |
 | **Preview while typing** | `true` | Affiche une traduction en direct au-dessus de la zone de saisie après une brève pause |
+| **Suggest fixes while typing** | `true` | Si votre brouillon est déjà dans la langue que vous apprenez, propose une version plus naturelle au-dessus de la zone de saisie ; **Use** la place dans la zone |
 | **Translate my prompts** | `true` | Affiche une traduction sous chaque prompt que vous envoyez |
 | **Translate Claude's replies** | `true` | Affiche une traduction sous chacune des réponses textuelles de Claude |
 

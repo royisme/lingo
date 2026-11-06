@@ -96,6 +96,22 @@ Languages are listed by their own names, never translated.
 | Duplicates | One request per distinct draft at a time |
 | On error | Shows `Translation failed` (no retry button here; typing again retries) |
 
+### 3.5 Polish band (a draft already in the target language)
+
+```
+[TAG] Better  Italic better version of the draft   Use
+```
+
+| Property | Value |
+| --- | --- |
+| Trigger | The same typing pause as the preview band, when the draft is already in the target language (`classify` = target), or the model, asked about a same-script draft, answers with `<<FIX>>` |
+| Shown when | Suggestions are on and the model returned a better version (`<<FIX>> …`); a natural draft (`<<SAME>>`) shows nothing |
+| While checking | Nothing (no `Translating…`); while re-checking after an edit, the previous suggestion stays, dimmed |
+| On error | Nothing: a failed suggestion is not worth a line |
+| Use | A plain `Button` (`key="lingo-use"`, hotkey `u`; in the terminal the band takes the keyboard with ctrl+x tab): writes the better version into the prompt box (`$.prompt.fill`), with the draft's own fenced code blocks put back for each `[code]`. Not offered when blocks would be lost or the draft holds a pasted-text or image chip. The used text is not checked again. |
+| Text | The better version keeps the draft's own marks (backticks, emphasis), since it may replace the draft |
+| Skipped | Slash commands and shell lines (`/…`, `!…`), as for the preview band and glosses |
+
 ## 4. Settings: native `/config` rows
 
 Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so they inherit its theme, keys and focus. No custom settings screen.
@@ -104,6 +120,7 @@ Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so th
 | --- | --- | --- | --- |
 | Lingo · Target language | `lingo.targetLanguage` | choice | English |
 | Lingo · Preview while typing | `lingo.previewWhileTyping` | boolean | true |
+| Lingo · Suggest fixes while typing | `lingo.polishWhileTyping` | boolean | true |
 | Lingo · Translate my prompts | `lingo.translatePrompts` | boolean | true |
 | Lingo · Translate Claude's replies | `lingo.translateReplies` | boolean | true |
 
@@ -138,6 +155,8 @@ The mod cannot choose fonts; it uses the surface's. Emphasis comes only from `it
 | failed | Translation failed |
 | retry | Translation failed · Retry |
 | preview | Preview |
+| better | Better |
+| use | Use |
 | hide | Hide this translation |
 | off | Turn off Lingo |
 | settings | Settings… |
