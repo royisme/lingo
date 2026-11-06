@@ -1,0 +1,15 @@
+{
+  "name": "lingo",
+  "description": "Lingo: language-learning translations for Claude Code.",
+  "owner": {
+    "name": "Roy",
+    "url": "https://github.com/royisme"
+  },
+  "plugins": [
+    {
+      "name": "lingo",
+      "source": "./claude-code",
+      "description": "Learn a language while you code: translations under your prompts and Claude's replies, plus a live preview while you type."
+    }
+  ]
+}
