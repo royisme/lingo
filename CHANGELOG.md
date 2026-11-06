@@ -2,6 +2,12 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.2.5] - 2026-11-06
+
+### Changed
+- **Lowest thinking effort**: every translation asks for `effort: low`. Haiku 5.5 cannot turn thinking off and otherwise thinks at `medium`.
+- **Haiku 4.5 when Haiku 5.5 is rate-limited for plugins**: plugin calls are side queries, which some accounts rate-limit on Haiku 5.5 while serving Haiku 4.5. With the default model, two rate limits in a row switch translation to Haiku 4.5 for 30 minutes (one toast says so), then Haiku 5.5 is tried again. Haiku 4.5 costs 10x as much per token, so Haiku 5.5 stays the default. A model you name in `/config` is always kept.
+
 ## [0.2.4] - 2026-11-06
 
 ### Fixed

@@ -124,15 +124,52 @@ function glossId(target: Language, text: string): string {
 /** `passing`: the failure may pass (a rate limit, an overload, a dropped call), so a later try may work. */
 type Asked = { ok: true; text: string; outputTokens: number } | { ok: false; why: string; passing: boolean }
 
+/** Points at the /config row when the model itself looks like the trouble. */
+function modelHint(model: string): string {
+  return `model "${model}" unavailable; set Lingo · Translation model in /config`
+}
+
+// ---- model choice: the cheap Haiku, and Haiku 4.5 when the account limits it ---------------
+
 /**
- * One completion, retried once after a pause when the failure may pass (a rate limit, an
+ * Plugin calls go out as side queries (`$.model.complete` is a `hook_prompt` request of class
+ * `auxiliary`), and some accounts rate-limit those on Haiku 5.5 while serving them on Haiku 4.5.
+ * With the default `haiku`, two rate limits in a row move translation to Haiku 4.5 (ten times
+ * the price) for FALLBACK_MS, then Haiku 5.5 is tried again. A model named in /config is kept.
+ */
+const DEFAULT_MODEL = 'haiku'
+const FALLBACK_MODEL = 'claude-haiku-4-5'
+const FALLBACK_MS = 30 * 60_000
+let limitedInARow = 0
+let fallbackUntil = 0
+let fallbackToldOnce = false
+
+async function currentModel($: EngineInterface): Promise<string> {
+  if (settings.model !== DEFAULT_MODEL) return settings.model
+  return fallbackUntil > (await $.clock.now()) ? FALLBACK_MODEL : DEFAULT_MODEL
+}
+
+/** Moves to FALLBACK_MODEL for a while; the cooldown was the other model's, so it is cleared. */
+async function fallBack($: EngineInterface) {
+  const now = await $.clock.now()
+  fallbackUntil = now + FALLBACK_MS
+  limitedInARow = 0
+  cooldown = 0
+  gap = MIN_GAP_MS
+  nextStart = now
+  await showLimited($, false)
+  $.ui.log(`Lingo: ${DEFAULT_MODEL} is rate-limited as a side query; translating with ${FALLBACK_MODEL} for 30 min`, { to: 'debug' })
+  if (!fallbackToldOnce) {
+    fallbackToldOnce = true
+    $.ui.toast(`Lingo: Haiku 5.5 is rate-limited for plugins on this account; using Haiku 4.5 for now`)
+  }
+}
+
+/**
+ * One completion at the lowest effort, tried again when the failure may pass (a rate limit, an
  * overload, a 5xx, a dropped connection, a call cut off). A failure says why in a few words,
  * drawn on the failed line and written to the debug log.
  */
-/** Points at the /config row when the model itself looks like the trouble. */
-function modelHint(): string {
-  return `model "${settings.model}" unavailable; set Lingo · Translation model in /config`
-}
 
 // Module variables: a reload starts the pacing over, which at worst sends one call early.
 let nextStart = 0
@@ -202,15 +239,19 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
       passing = true
       break
     }
+    const model = await currentModel($)
     let r
     try {
-      r = await $.model.complete({ model: settings.model, system, prompt, maxTokens: MAX_TOKENS, timeoutMs: 30000 })
+      // `low` is the least thinking a plugin can ask for: Haiku 5.5 cannot turn thinking off and
+      // runs adaptive thinking at `medium` unless told; a model without effort (Haiku 4.5) drops it.
+      r = await $.model.complete({ model, system, prompt, maxTokens: MAX_TOKENS, effort: 'low', timeoutMs: 30000 })
     } catch (err) {
       // The engine would not send it (a model not allowed, a setting): asking again changes nothing.
-      why = `${modelHint()}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
+      why = `${modelHint(model)}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
       break
     }
     if (r.isAnswered) {
+      limitedInARow = 0
       cooldown = 0
       gap = Math.max(MIN_GAP_MS, gap - GAP_STEP_MS)
       await showLimited($, false)
@@ -220,11 +261,13 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
       const { error, status } = r
       // An alias may name a model this account or gateway does not serve (haiku 5.5 where only 4.5 is).
       const badModel = error === 'model_not_found' || status === 404 || (status === 400 && error === 'invalid_request')
-      why = status === null ? 'no connection' : badModel ? `${modelHint()} (${error} ${status})` : `${error} ${status}`
+      why = status === null ? 'no connection' : badModel ? `${modelHint(model)} (${error} ${status})` : `${error} ${status}`
       const limited = status === 429 || status === 529 || error === 'rate_limit' || error === 'overloaded'
-      if (status === 429 || error === 'rate_limit') why += await accountWindows($)
+      const rateLimited = status === 429 || error === 'rate_limit'
+      if (rateLimited) why += await accountWindows($)
       passing = limited || status === null || status >= 500
-      if (limited) await backOff($)
+      if (rateLimited && model === DEFAULT_MODEL && ++limitedInARow >= 2) await fallBack($)
+      else if (limited) await backOff($)
       else {
         await showLimited($, false)
         if (!passing) break
