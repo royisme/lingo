@@ -64,8 +64,14 @@ const ACCENT = 'suggestion'
 /** Quiet time before a draft is previewed: every edit or caret move starts it over (an IME pause is long). */
 const PREVIEW_DELAY_MS = 1500
 const MAX_TOKENS = 4096
-/** Calls start at least this far apart, whoever makes them (glosses, the preview). */
+/**
+ * Calls start at least `gap` apart, whoever makes them (glosses, the preview). The gap adapts to
+ * the account: it doubles on each rate limit (up to MAX_GAP_MS) and shrinks by GAP_STEP_MS on each
+ * success, back to MIN_GAP_MS, so Lingo settles under whatever per-minute limit the account has.
+ */
 const MIN_GAP_MS = 1000
+const MAX_GAP_MS = 10000
+const GAP_STEP_MS = 500
 /** After a rate limit or an overload every call waits this long, doubling up to COOLDOWN_MAX_MS. */
 const COOLDOWN_MS = 5000
 const COOLDOWN_MAX_MS = 60000
@@ -131,9 +137,10 @@ function modelHint(): string {
 // Module variables: a reload starts the pacing over, which at worst sends one call early.
 let nextStart = 0
 let cooldown = 0
+let gap = MIN_GAP_MS
 
 /**
- * Waits for this call's slot: MIN_GAP_MS after the last one, and past any cooldown.
+ * Waits for this call's slot: `gap` after the last one, and past any cooldown.
  * Resolves 0 once it is this call's turn, or, without waiting, how long it would have to wait
  * when that is past MAX_WAIT_MS.
  */
@@ -141,9 +148,31 @@ async function waitTurn($: EngineInterface): Promise<number> {
   const now = await $.clock.now()
   const at = Math.max(now, nextStart)
   if (at - now > MAX_WAIT_MS) return at - now
-  nextStart = at + MIN_GAP_MS
+  nextStart = at + gap
   if (at > now) await $.clock.sleep(at - now)
   return 0
+}
+
+/**
+ * The account's usage windows that are nearly spent (`five_hour`, `seven_day`, a gateway's
+ * spend limit), for a rate-limit line: tells a spent plan from calls that came too fast.
+ */
+async function accountWindows($: EngineInterface): Promise<string> {
+  try {
+    const hot = (await $.session.usage()).rateLimits
+      .filter(w => w.percentUsed >= 80)
+      .sort((a, b) => b.percentUsed - a.percentUsed)
+    const w = hot[0]
+    if (!w) return ''
+    const at = w.resetsAt ? new Date(w.resetsAt) : undefined
+    const resets =
+      at && !Number.isNaN(at.getTime())
+        ? `, resets ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+        : ''
+    return `; ${w.kind} ${w.percentUsed}%${resets}`
+  } catch {
+    return ''
+  }
 }
 
 let limitedShown = false
@@ -158,6 +187,7 @@ async function showLimited($: EngineInterface, on: boolean) {
 /** A rate limit or an overload: every call waits, longer each time until one goes through. */
 async function backOff($: EngineInterface) {
   cooldown = cooldown ? Math.min(cooldown * 2, COOLDOWN_MAX_MS) : COOLDOWN_MS
+  gap = Math.min(gap * 2, MAX_GAP_MS)
   nextStart = Math.max(nextStart, (await $.clock.now()) + cooldown)
   await showLimited($, true)
 }
@@ -182,6 +212,7 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
     }
     if (r.isAnswered) {
       cooldown = 0
+      gap = Math.max(MIN_GAP_MS, gap - GAP_STEP_MS)
       await showLimited($, false)
       return { ok: true, text: r.text, outputTokens: r.usage.output_tokens }
     }
@@ -191,6 +222,7 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
       const badModel = error === 'model_not_found' || status === 404 || (status === 400 && error === 'invalid_request')
       why = status === null ? 'no connection' : badModel ? `${modelHint()} (${error} ${status})` : `${error} ${status}`
       const limited = status === 429 || status === 529 || error === 'rate_limit' || error === 'overloaded'
+      if (status === 429 || error === 'rate_limit') why += await accountWindows($)
       passing = limited || status === null || status >= 500
       if (limited) await backOff($)
       else {

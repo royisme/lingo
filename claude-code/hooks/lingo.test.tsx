@@ -977,3 +977,56 @@ test('a lasting rate limit: rows say they wait, then fail with Retry within seco
   await late.unmount()
   await ui.unmount()
 })
+
+test('the pace adapts: after rate limits, calls start further apart than the base second', async ($, on) => {
+  const clock = mock.clock(on)
+  const starts: Array<[string, number]> = []
+  let t = 0
+  on('model.complete', (_: any, e: any) => {
+    starts.push([e.prompt, t])
+    return e.prompt === '第一条消息'
+      ? { value: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE } }
+      : { value: { isAnswered: true, text: 'ok', usage: USAGE } }
+  })
+  engineRow(on)
+  const tick = async (n: number) => {
+    for (let i = 0; i < n; i++) {
+      t += 1000
+      await clock.advance(1000)
+      await clock.settle()
+    }
+  }
+  const a = await $.ui.mount(userRow('第一条消息', 'desktop', 'm-gap-1'))
+  await clock.settle()
+  await tick(40) // three 429s: the gap is now 8 s
+  const b = await $.ui.mount(userRow('第二条消息', 'desktop', 'm-gap-2'))
+  const c = await $.ui.mount(userRow('第三条消息', 'desktop', 'm-gap-3'))
+  await clock.settle()
+  await tick(12)
+  const at = (p: string) => starts.find(([q]) => q === p)?.[1]
+  expect(Math.abs(at('第三条消息')! - at('第二条消息')!)).toBeGreaterThanOrEqual(4000)
+  for (const ui of [a, b, c]) await ui.unmount()
+})
+
+test('a rate limit names the account window that is nearly spent', async ($, on) => {
+  const clock = mock.clock(on)
+  on('model.complete', () => ({ value: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE } }))
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: {},
+      rateLimits: [
+        { kind: 'seven_day', percentUsed: 40 },
+        { kind: 'five_hour', percentUsed: 100 },
+      ],
+    },
+  }))
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-window'))
+  for (let i = 0; i < 4; i++) {
+    await clock.advance(5000)
+    await clock.settle()
+  }
+  expect((await ui.find({ type: 'Text', text: /failed/ }))?.text).toBe('Translation failed (rate_limit 429; five_hour 100%) · Retry')
+  await ui.unmount()
+})

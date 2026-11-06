@@ -2,6 +2,12 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.2.4] - 2026-11-06
+
+### Fixed
+- **Pace adapts to the account's limit**: the gap between calls doubles on each rate limit (1 s up to 10 s) and shrinks back by 0.5 s on each success. An account whose haiku limit is lower than one call a second no longer keeps hitting 429.
+- **Rate-limit lines name a spent usage window**: `Translation failed (rate_limit 429; five_hour 100%, resets 18:30)` when a plan window is 80 % used or more.
+
 ## [0.2.3] - 2026-11-06
 
 ### Fixed
