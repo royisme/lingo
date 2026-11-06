@@ -11,6 +11,8 @@ export type Draft = {
   status: 'pending' | 'done' | 'fix' | 'same' | 'error'
   text: string
   kind?: 'translate' | 'polish'
+  /** With `fix`: the whole better version for the prompt box, its code, commands and mentions as written. Absent when they could not all be kept: no Use then. */
+  fix?: string
 }
 
 declare module 'claude-code' {

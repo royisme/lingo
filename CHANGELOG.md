@@ -5,10 +5,11 @@ All notable changes to the Lingo plugin for Claude Code are documented in this f
 ## [0.2.0] - 2026-11-06
 
 ### Added
-- **Suggest fixes while typing**: when your draft is already in the language you're learning, the band above the prompt box shows a more natural version (`EN Better …`); **Use** (or `u` once the band has focus: ctrl+x tab in the terminal) puts it in the box, your code blocks kept. A natural draft shows nothing. New `/config` row `Lingo · Suggest fixes while typing` (on by default).
+- **Suggest fixes while typing**: when your draft is already in the language you're learning, the band above the prompt box shows a more natural version (`EN Better …`); **Use** (or `u` once the band has focus: ctrl+x tab in the terminal) puts it in the box, your code, commands and mentions kept. A natural draft shows nothing. New `/config` row `Lingo · Suggest fixes while typing` (on by default).
 
 ### Changed
 - Slash commands and shell lines (`/…`, `!…`) get no preview and no gloss.
+- **Commands, skills and mentions are never translated or rewritten**: code, URLs, `/commands`, `/plugin:skill` and `@mentions` inside a message go to the model as `⟦n⟧` markers and come back exactly as written. **Use** is offered only when every one of them survives.
 
 ## [0.1.1] - 2026-11-06
 

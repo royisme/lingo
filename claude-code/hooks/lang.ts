@@ -149,35 +149,62 @@ export const SAME = '<<SAME>>'
 /** The model's prefix for a better version of a draft already in the target language. */
 export const FIX = '<<FIX>>'
 
-/** What stands in for a fenced code block in the text the model is sent. */
+/** What a gloss draws in place of a fenced code block. */
 export const CODE = '[code]'
 
 /**
- * The text the model is sent: fenced code blocks become a `[code]` line, since
- * a gloss is prose and code is never translated (re-typing it only costs tokens).
+ * What the model must never translate or rewrite, tried in this order: fenced code, inline
+ * code, URLs, slash commands and skills (`/review`, `/plugin:skill`, also a path such as
+ * `/tmp/x`), and @-mentions (`@src/a.ts`, `@agent`). A command or mention counts only where a
+ * word does not run into it (`先用/review看` counts; `and/or`, `./src` and `me@example.com` do not).
  */
-export function forModel(text: string): string {
-  return text
+const KEEP =
+  /```[\s\S]*?(?:```|$)|`[^`\n]+`|https?:\/\/[^\s)\]}>"'\u3000-\uffff]*[^\s)\]}>"'\u3000-\uffff.,;:!?]|(?<![\w./:~-])\/[A-Za-z][\w:-]*(?:[./][\w:-]+)*|(?<![\w.@-])@[\w-]+(?:[./:][\w-]+)*/g
+
+const MARK = /⟦(\d+)⟧/g
+
+/** A text as the model is sent it: each kept piece a `⟦n⟧` marker, the pieces in order. */
+export type Shielded = { text: string; kept: readonly string[] }
+
+/** Puts a marker in place of each piece the model must leave alone (KEEP). */
+export function shield(text: string): Shielded {
+  const kept: string[] = []
+  const out = text
     .trim()
-    .replace(FENCE, `\n${CODE}\n`)
+    .replace(KEEP, piece => {
+      kept.push(piece)
+      return `⟦${kept.length}⟧`
+    })
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+  return { text: out, kept }
 }
 
-const FENCE = /```[\s\S]*?(?:```|$)/g
+/** For drawing: each marker back as its piece, a fenced block as `[code]`; unknown markers dropped. */
+export function unshieldForDisplay(text: string, kept: readonly string[]): string {
+  return text.replace(MARK, (_, n: string) => {
+    const piece = kept[Number(n) - 1]
+    return piece === undefined ? '' : piece.startsWith('```') ? CODE : piece
+  })
+}
 
 /**
- * A better version of a draft, made whole again: each `[code]` the model kept is replaced by
- * the draft's own fenced block, in order. Undefined when that cannot be done safely (blocks
- * lost or added, or the draft holds a pasted-text or image chip the box would not get back).
+ * For the prompt box: every piece back exactly as the person wrote it. Undefined unless each
+ * marker came back exactly once, so a command, mention or code block is never lost or doubled.
  */
-export function restoreCode(src: string, fixed: string): string | undefined {
-  if (/\[(?:Pasted text|Image) #\d+/.test(src)) return undefined
-  const fences = src.match(FENCE) ?? []
-  const parts = fixed.split(CODE)
-  if (parts.length - 1 !== fences.length) return undefined
-  return parts.reduce((out, part, i) => out + (i > 0 ? fences[i - 1] : '') + part, '').trim()
+export function unshieldExact(text: string, kept: readonly string[]): string | undefined {
+  const seen = (text.match(MARK) ?? []).map(m => Number(m.slice(1, -1)))
+  if (seen.length !== kept.length || new Set(seen).size !== kept.length) return undefined
+  if (seen.some(n => n < 1 || n > kept.length)) return undefined
+  return text.replace(MARK, (_, n: string) => kept[Number(n) - 1] ?? '').trim()
 }
+
+/** A pasted-text or image chip, which the prompt box would not get back from plain text. */
+export function hasChip(text: string): boolean {
+  return /\[(?:Pasted text|Image) #\d+/.test(text)
+}
+
+const MARKERS = 'Each ⟦n⟧ marker stands for code, a command, a URL or a reference: keep every marker exactly as written, once, where it belongs.'
 
 /** A translation as a gloss draws it: plain text, no Markdown marks left over. */
 export function plain(text: string): string {
@@ -194,7 +221,8 @@ export function systemPrompt(target: Language, allowSame: boolean): string {
     `You translate messages from a conversation between a software developer and a coding assistant into natural, idiomatic ${target.prompt}.`,
     'Output only the translation: no quotes, notes, or alternatives.',
     'Write plain text without Markdown formatting (no headings, bold, tables or code fences); keep one line per paragraph or list item.',
-    `Keep ${CODE} markers, code, file paths, identifiers, commands and numbers exactly as they are.`,
+    MARKERS,
+    'Keep file paths, identifiers, slash commands (/name), @mentions and numbers exactly as they are.',
     allowSame
       ? `If the message is already written in ${target.prompt}, output exactly ${SAME} and nothing else.`
       : '',
@@ -218,7 +246,8 @@ export function polishPrompt(target: Language, mayTranslate: boolean): string {
     `otherwise output ${FIX} followed by the corrected, natural version, keeping the meaning, tone and register.`,
     'Change only what is wrong or clearly unnatural; do not rephrase what is fine.',
     'Write plain text without Markdown formatting and without explanations.',
-    `Keep ${CODE} markers, code, file paths, identifiers, commands and numbers exactly as they are.`,
+    MARKERS,
+    'Keep file paths, identifiers, slash commands (/name), @mentions and numbers exactly as they are.',
   ].join(' ')
 }
 

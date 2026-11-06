@@ -1,6 +1,21 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { CODE, FIX, SAME, classify, decide, findLanguage, forModel, hash, isCommand, plain, prose, restoreCode } from './lang'
+import {
+  CODE,
+  FIX,
+  SAME,
+  classify,
+  decide,
+  findLanguage,
+  hasChip,
+  hash,
+  isCommand,
+  plain,
+  prose,
+  shield,
+  unshieldExact,
+  unshieldForDisplay,
+} from './lang'
 
 const USAGE = {
   input_tokens: 10,
@@ -344,11 +359,24 @@ test('draft preview drops result if prompt changed while in flight', async ($, o
   await ui.unmount()
 })
 
-test('forModel sends prose with code fences folded; plain strips Markdown marks', () => {
-  const sent = forModel('看这里:\n```ts\nconst pool = createPool({ max: 10 })\n```\n然后重启')
-  expect(sent).not.toContain('createPool')
-  expect(sent).toContain(CODE)
-  expect(forModel('未闭合\n```ts\nconst a = 1')).not.toContain('const a')
+test('shield keeps code, URLs, commands and mentions from the model; plain strips Markdown marks', () => {
+  const sent = shield('看这里:\n```ts\nconst pool = createPool({ max: 10 })\n```\n然后重启')
+  expect(sent.text).toBe('看这里:\n⟦1⟧\n然后重启')
+  expect(unshieldForDisplay(sent.text, sent.kept)).toBe(`看这里:\n${CODE}\n然后重启`)
+  expect(shield('未闭合\n```ts\nconst a = 1').text).not.toContain('const a')
+
+  const mixed = shield('先用 /code-review 看一下 @src/auth.ts，再跑 `npm test`，参考 https://x.dev/a。/plugin:skill 也行')
+  expect(mixed.kept).toEqual(['/code-review', '@src/auth.ts', '`npm test`', 'https://x.dev/a', '/plugin:skill'])
+  expect(mixed.text).toBe('先用 ⟦1⟧ 看一下 ⟦2⟧，再跑 ⟦3⟧，参考 ⟦4⟧。⟦5⟧ 也行')
+  expect(shield('Use /review.').kept).toEqual(['/review'])
+  expect(shield('See https://x.dev/a, then /lingo fr.').kept).toEqual(['https://x.dev/a', '/lingo'])
+  expect(shield('choose yes/no and/or mail me@example.com').kept).toEqual([])
+  expect(shield('先用/code-review看一下@src/a.ts的改动').kept).toEqual(['/code-review', '@src/a.ts'])
+
+  expect(unshieldExact('Use ⟦1⟧ on ⟦2⟧', ['/review', '@a.ts'])).toBe('Use /review on @a.ts')
+  expect(unshieldExact('Use ⟦1⟧', ['/review', '@a.ts'])).toBeUndefined() // a mention lost
+  expect(unshieldExact('Use ⟦1⟧ and ⟦1⟧', ['/review', '@a.ts'])).toBeUndefined() // one doubled
+  expect(unshieldExact('Use ⟦3⟧', ['/review'])).toBeUndefined()
   expect(plain('## Cause\n**The pool** is full; see `getUserById`.')).toBe('Cause\nThe pool is full; see getUserById.')
   expect(plain('a * b * c')).toBe('a * b * c')
 })
@@ -557,11 +585,8 @@ test('classify, isCommand and restoreCode', () => {
   expect(isCommand('!ls -la')).toBe(true)
   expect(isCommand('why is /tmp full')).toBe(false)
 
-  const src = 'pls fix this:\n```ts\nconst a = 1\n```\nit dont work'
-  const fixed = `Please fix this:\n${CODE}\nIt doesn't work.`
-  expect(restoreCode(src, fixed)).toBe("Please fix this:\n```ts\nconst a = 1\n```\nIt doesn't work.")
-  expect(restoreCode(src, 'Please fix this. It does not work.')).toBeUndefined() // the block was lost
-  expect(restoreCode('[Pasted text #1 +20 lines] why fail', 'Why does it fail?')).toBeUndefined()
+  expect(hasChip('[Pasted text #1 +20 lines] why fail')).toBe(true)
+  expect(hasChip('why does [x] fail')).toBe(false)
 })
 
 test('a draft in the target language gets a better version, and Use puts it in the box', async ($, on) => {
@@ -628,7 +653,7 @@ test('a fix keeps the draft code blocks when used', async ($, on) => {
   const sent: string[] = []
   on('model.complete', (_: any, e: any) => {
     sent.push(e.prompt)
-    return { value: { isAnswered: true, text: `${FIX} Why does this function return null?\n${CODE}\nThe test fails.`, usage: USAGE } }
+    return { value: { isAnswered: true, text: `${FIX} Why does this function return null?\n⟦1⟧\nThe test fails.`, usage: USAGE } }
   })
   const fills: string[] = []
   on('prompt.fill', (_: any, e: any) => {
@@ -677,4 +702,55 @@ test('slash commands and shell lines get no preview and no gloss', async ($, on)
   expect(asked.length).toBe(0)
   expect(await ui.find({ type: 'Text', text: /Translat/ })).toBeUndefined()
   await ui.unmount()
+})
+
+test('a gloss keeps commands and mentions exactly as written', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'First run ⟦1⟧ on ⟦2⟧.')
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('先用 /code-review 看一下 @src/auth.ts', 'desktop', 'm-cmd-gloss'))
+  await clock.settle()
+  expect(asked[0]).toBe('先用 ⟦1⟧ 看一下 ⟦2⟧')
+  expect((await ui.find({ type: 'Text', text: /First run/ }))?.text).toBe('First run /code-review on @src/auth.ts.')
+  await ui.unmount()
+})
+
+test('Use puts back commands and mentions as written, and is withheld when the model drops one', async ($, on) => {
+  const clock = mock.clock(on)
+  let box = 'please use /code-review for check the @src/auth.ts file'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  let reply = `${FIX} Please use ⟦1⟧ to check the ⟦2⟧ file.`
+  const sent: string[] = []
+  on('model.complete', (_: any, e: any) => {
+    sent.push(e.prompt)
+    return { value: { isAnswered: true, text: reply, usage: USAGE } }
+  })
+  const fills: string[] = []
+  on('prompt.fill', (_: any, e: any) => {
+    fills.push(e.text)
+    box = e.text
+    return { isFilled: true }
+  })
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  expect(sent[0]).toBe('please use ⟦1⟧ for check the ⟦2⟧ file')
+  const ui = await $.ui.mount(BAND)
+  expect((await ui.find({ type: 'Text', text: /check the/ }))?.text).toBe('Please use /code-review to check the @src/auth.ts file.')
+  await ui.press({ key: 'lingo-use' })
+  await clock.settle()
+  expect(fills).toEqual(['Please use /code-review to check the @src/auth.ts file.'])
+  await ui.unmount()
+
+  // The model drops the mention: the suggestion still reads, but nothing may replace the draft.
+  box = 'please use /code-review for check the @src/db.ts file'
+  reply = `${FIX} Please use ⟦1⟧ to check the file.`
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  const again = await $.ui.mount({ ...BAND, requestId: 'band-polish-2' })
+  expect((await again.find({ type: 'Text', text: /check the file/ }))?.text).toBe('Please use /code-review to check the file.')
+  expect(await again.find({ key: 'lingo-use' })).toBeUndefined()
+  await again.unmount()
 })

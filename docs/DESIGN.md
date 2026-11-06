@@ -108,7 +108,7 @@ Languages are listed by their own names, never translated.
 | Shown when | Suggestions are on and the model returned a better version (`<<FIX>> …`); a natural draft (`<<SAME>>`) shows nothing |
 | While checking | Nothing (no `Translating…`); while re-checking after an edit, the previous suggestion stays, dimmed |
 | On error | Nothing: a failed suggestion is not worth a line |
-| Use | A plain `Button` (`key="lingo-use"`, hotkey `u`; in the terminal the band takes the keyboard with ctrl+x tab): writes the better version into the prompt box (`$.prompt.fill`), with the draft's own fenced code blocks put back for each `[code]`. Not offered when blocks would be lost or the draft holds a pasted-text or image chip. The used text is not checked again. |
+| Use | A plain `Button` (`key="lingo-use"`, hotkey `u`; in the terminal the band takes the keyboard with ctrl+x tab): writes the better version into the prompt box (`$.prompt.fill`), with every kept piece (code, commands, skills, mentions, URLs) put back exactly as written. Not offered unless each `⟦n⟧` marker came back exactly once, nor when the draft holds a pasted-text or image chip. The used text is not checked again. |
 | Text | The better version keeps the draft's own marks (backticks, emphasis), since it may replace the draft |
 | Skipped | Slash commands and shell lines (`/…`, `!…`), as for the preview band and glosses |
 
@@ -182,7 +182,7 @@ UI strings are English in 0.1; localizing them to the person's source language i
 | Control | Rule |
 | --- | --- |
 | One gloss per text | Keyed by target + trimmed text; the preview and the sent prompt share it |
-| Code is never sent | Fenced code blocks go to the model as a `[code]` line; inline code, paths and identifiers stay |
+| Kept from the model | Fenced code, inline code, URLs, slash commands and skills (`/review`, `/plugin:skill`) and @-mentions go to the model as `⟦n⟧` markers and come back as written; a gloss draws a fenced block as `[code]`. A command or mention counts where no word runs into it (`先用/review看` counts; `and/or`, `./src`, `me@example.com` do not) |
 | Token cap | 4096 output tokens per gloss; a gloss that hits it ends with ` …` |
 | Concurrency | At most 2 glosses translate at once; waiting ones start newest first (the rows nearest the prompt) |
 | Orphans | A gloss left `pending` by a module that reloaded mid-request is translated again when its row is drawn |
