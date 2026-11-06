@@ -1,0 +1,157 @@
+# Lingo design spec
+
+The visual source of truth is the design canvas **“语言学习 Mod · 译文呈现”** (https://claude.ai/artifact/Dn7nv97PRstnrWMYgiMbSU, private to the owner). This file records the decisions it settled, in the terms the code uses.
+
+## 1. The one rule
+
+A translation must never read as something Claude said. Every translation carries **three** marks at once:
+
+1. a **language tag** (`EN`, `FR`, …) before it;
+2. **italic** text;
+3. the theme's **accent color** (theme key `suggestion`), never the body text color.
+
+Any one mark alone is not enough; together they make a gloss unmistakable in every theme.
+
+## 2. Chosen direction: A · Interlinear gloss
+
+Rejected alternatives, kept on the canvas for reference:
+
+| Direction | Why not chosen |
+| --- | --- |
+| B · Side pane | Original and translation far apart; no room on phones or narrow windows. |
+| C · Folded tag | Every message costs a click; good only for self-testing. |
+
+A wins because reading a sentence next to its translation is what learning needs, and the three marks keep it distinct.
+
+## 3. Components
+
+### 3.1 Gloss row (under a message)
+
+```
+<message row as the engine draws it>
+  [TAG] Italic translation text in the accent color, wrapping under itself
+```
+
+| Property | Value |
+| --- | --- |
+| Placement | Directly under the message, `marginTop 1`, `paddingLeft 2` (aligns with message text after the bullet) |
+| Layout | Row, `gap 1`; tag fixed, text `flexShrink 1` and wraps |
+| Text | `italic`, color `suggestion` |
+| Applies to | `UserMessage` with `origin.kind === 'composer'`; `AssistantMessage` text blocks. Never `isSummary` blocks, tool rows, tool output or code. |
+| Hidden when | Target is Off; text is already in the target language (`decide` = skip, or model answers `<<SAME>>`); the person hid this gloss; the matching setting is off. |
+
+States:
+
+| State | Shows |
+| --- | --- |
+| pending | `Translating…` dim |
+| done | the translation |
+| error | `Translation failed · Retry` dim, a plain `Button` (`key="lingo-retry"`); pressing it translates again |
+| same | nothing (row untouched) |
+
+### 3.2 Language tag
+
+| Surface | Look |
+| --- | --- |
+| terminal | Bold accent letters, no frame (a terminal border costs three rows) |
+| desktop, vscode, mobile | Bold caption-size accent letters inside a `round` border in the accent color, `paddingX 1` |
+
+The tag is a `Button` (`key="lingo-tag"`, `plain`): pressing it opens the tag menu.
+
+Tags: `EN FR ES DE PT JA KO ZH ZH-TW RU VI`.
+
+### 3.3 Tag menu (quick switch)
+
+Opens under the gloss row of the message whose tag was pressed; one menu per message.
+
+```
+English ✓   Français   Español   Deutsch   Português   日本語   한국어   简体中文   繁體中文   Русский   Tiếng Việt
+Hide this translation   Turn off Lingo   Settings…
+```
+
+| Item | Key | Action |
+| --- | --- | --- |
+| A language | `lingo-lang-<code>` | Sets `/config` row `lingo.targetLanguage`; closes the menu. Current one bold accent with `✓`. |
+| Hide this translation | `lingo-hide` | Hides this gloss only (by gloss id). |
+| Turn off Lingo | `lingo-off` | Sets the target to `Off`. |
+| Settings… | `lingo-settings` | Fills `/config` into the prompt box. Drawn dim. |
+
+Languages are listed by their own names, never translated.
+
+### 3.4 Preview band (above the prompt box)
+
+```
+[TAG] Preview  Italic translation of the draft
+```
+
+| Property | Value |
+| --- | --- |
+| Trigger | Typing pause of **600 ms** (`prompt.edit` / `prompt.change`); typing again restarts the wait |
+| Shown when | Preview is on, the draft is not in the target language, no survey is up |
+| While re-translating | Previous text stays, dimmed |
+| Cleared | On submit, on a cleared box, when the draft becomes target-language |
+| Stale answers | Dropped if the draft changed, the target language changed, or the preview was turned off while translating |
+| Duplicates | One request per distinct draft at a time |
+| On error | Shows `Translation failed` (no retry button here; typing again retries) |
+
+## 4. Settings: native `/config` rows
+
+Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so they inherit its theme, keys and focus. No custom settings screen.
+
+| Row label | Key | Kind | Default |
+| --- | --- | --- | --- |
+| Lingo · Target language | `lingo.targetLanguage` | choice | English |
+| Lingo · Preview while typing | `lingo.previewWhileTyping` | boolean | true |
+| Lingo · Translate my prompts | `lingo.translatePrompts` | boolean | true |
+| Lingo · Translate Claude's replies | `lingo.translateReplies` | boolean | true |
+
+Choice values: `English, Français, Español, Deutsch, Português, 日本語, 한국어, 简体中文, 繁體中文, Русский, Tiếng Việt, Off`.
+
+Shortcut command: `/lingo <code|name|off>` writes the same row. With no argument it reports the current language.
+
+Rejected: a custom `/lingo` settings pane (configuration 2 on the canvas); more to maintain per surface, for no gain over native rows.
+
+## 5. Color
+
+Code uses the theme key `suggestion` only; the surface maps it. The canvas was drawn with these approximations:
+
+| Theme | Background | Body text | Accent (`suggestion`) | Dim |
+| --- | --- | --- | --- | --- |
+| Terminal dark | `#141414` | `#F2F2F2` | `#B1B9F9` | `#9A9A9A` |
+| Terminal light | `#FCFCFC` | `#111111` | `#4A5CE0` | `#666666` |
+| Desktop light | `#FAF9F5` | `#1F1E1D` | `#3F51C9` | `#6B6862` |
+| Desktop dark | `#262624` | `#EDEBE4` | `#A9B4F5` | `#A6A39A` |
+
+Accent on background meets 4.5:1 in all four. Never hard-code these in the mod.
+
+## 6. Type
+
+The mod cannot choose fonts; it uses the surface's. Emphasis comes only from `italic`, `bold`, `size="caption"` and `dimColor`. (Early canvas directions used a serif for glosses; that was dropped because no surface can draw it.)
+
+## 7. Copy (UI strings)
+
+| Id | English |
+| --- | --- |
+| translating | Translating… |
+| failed | Translation failed |
+| retry | Translation failed · Retry |
+| preview | Preview |
+| hide | Hide this translation |
+| off | Turn off Lingo |
+| settings | Settings… |
+| cmd.current | Lingo: translating into {language}. Try /lingo fr, /lingo ja or /lingo off; /config has every setting. |
+| cmd.set | Lingo: translating into {language}. |
+| cmd.off | Lingo: translations off. |
+| cmd.denied | Lingo: couldn't change the language ({reason}). |
+
+UI strings are English in 0.1; localizing them to the person's source language is a later step.
+
+## 8. Language detection (what decides if a gloss appears)
+
+1. Strip code fences, inline code, URLs and file paths (a path is `./x`, `a/b/c`, or `dir/file.ext`; ordinary words joined by one slash, like `and/or`, are kept).
+2. Fewer than 2 letters left: skip.
+3. Dominant script differs from the target's (Han, Kana, Hangul, Cyrillic, Latin; Han with any Kana counts as Japanese): translate.
+4. Latin target and 4 or more non-Latin letters in the text: translate (a mixed message is still worth a gloss).
+5. Same Latin script: compare common function words; clearly target: skip; clearly another language: translate; unsure: ask the model.
+6. Han target (Simplified vs Traditional): ask the model.
+7. Asked, the model answers `<<SAME>>` when the text is already in the target; nothing is shown.

@@ -57,6 +57,10 @@ Or switch at any time without opening `/config`:
 
 Each translation is one short call to Claude's `haiku` model through Claude Code's own `$.model.complete` API — the same account and billing you already use, with no external translation service and no network permissions. A typical message costs a fraction of a cent; messages already in your target language cost nothing in most cases.
 
+## Design
+
+The design decisions — the gloss, the language tag and its menu, the preview band, settings, colors and copy — are in [docs/DESIGN.md](docs/DESIGN.md).
+
 ## Development
 
 ```sh
