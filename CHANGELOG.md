@@ -2,6 +2,12 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.2.1] - 2026-11-06
+
+### Fixed
+- **Failed translations say why**: `Translation failed (rate_limit 429)`, `(no connection)`, `(timed out or cut off)`, `(refused: …)`, on the gloss line and the preview band, and in the debug log.
+- **Passing failures are retried once by themselves** (rate limit, overload, 5xx, dropped connection, a call cut off by a reload) after 1.5 s.
+
 ## [0.2.0] - 2026-11-06
 
 ### Added

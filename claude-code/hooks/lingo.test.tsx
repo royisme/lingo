@@ -754,3 +754,52 @@ test('Use puts back commands and mentions as written, and is withheld when the m
   expect(await again.find({ key: 'lingo-use' })).toBeUndefined()
   await again.unmount()
 })
+
+test('a passing failure (rate limit) is retried once by itself', async ($, on) => {
+  const clock = mock.clock(on)
+  let calls = 0
+  on('model.complete', () => {
+    calls++
+    if (calls === 1) return { value: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE } }
+    return { value: { isAnswered: true, text: 'Check the logs.', usage: USAGE } }
+  })
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-429'))
+  await clock.settle()
+  await clock.advance(2000)
+  await clock.settle()
+  expect(calls).toBe(2)
+  expect((await ui.find({ type: 'Text', text: /Check the logs/ }))?.text).toBe('Check the logs.')
+  await ui.unmount()
+})
+
+test('a lasting failure is not retried, and the failed line says why', async ($, on) => {
+  const clock = mock.clock(on)
+  let calls = 0
+  on('model.complete', () => {
+    calls++
+    return { value: { isAnswered: false, reason: 'api-error', status: 401, error: 'authentication_failed', usage: USAGE } }
+  })
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-401'))
+  await clock.settle()
+  expect(calls).toBe(1)
+  expect((await ui.find({ type: 'Text', text: /failed/ }))?.text).toBe('Translation failed (authentication_failed 401) · Retry')
+  await ui.unmount()
+})
+
+test('the preview band says why it failed', async ($, on) => {
+  const clock = mock.clock(on)
+  on('prompt.read', () => ({ value: { text: '你现在', cursor: 3 } }))
+  on('model.complete', () => {
+    throw new Error('model haiku is not available')
+  })
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+  await ($.prompt as any).change({ text: '你现在', cursor: 3, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  await clock.settle()
+  const ui = await $.ui.mount({ ...BAND, requestId: 'band-why' })
+  expect((await ui.find({ type: 'Text', text: /failed/ }))?.text).toMatch(/^Translation failed \(refused: .+\)$/)
+  await ui.unmount()
+})

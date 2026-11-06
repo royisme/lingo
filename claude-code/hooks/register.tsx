@@ -58,6 +58,7 @@ const draft = atom(DRAFT, null)
 const ACCENT = 'suggestion'
 const PREVIEW_DELAY_MS = 600
 const MAX_TOKENS = 4096
+const RETRY_DELAY_MS = 1500
 /** Glosses translated at once; the rest wait (a resumed session draws its whole history). */
 const MAX_PARALLEL = 2
 
@@ -95,51 +96,67 @@ function glossId(target: Language, text: string): string {
 
 // ---- translation (outside any render) --------------------------------------
 
-async function translate($: EngineInterface, text: string, target: Language, allowSame: boolean) {
-  try {
-    const sent = shield(text)
-    const r = await $.model.complete({
-      model: 'haiku',
-      system: systemPrompt(target, allowSame),
-      prompt: sent.text,
-      maxTokens: MAX_TOKENS,
-      timeoutMs: 30000,
-    })
-    if (!r.isAnswered) return { status: 'error', text: '' } as const
-    const out = r.text.trim()
-    if (allowSame && out === SAME) return { status: 'same', text: '' } as const
-    const cut = r.usage.output_tokens >= MAX_TOKENS ? ' …' : '' // stopped at the cap
-    return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) + cut } as const
-  } catch {
-    return { status: 'error', text: '' } as const
+type Asked = { ok: true; text: string; outputTokens: number } | { ok: false; why: string }
+
+/**
+ * One completion, retried once after a pause when the failure may pass (a rate limit, an
+ * overload, a 5xx, a dropped connection, a call cut off). A failure says why in a few words,
+ * drawn on the failed line and written to the debug log.
+ */
+async function ask($: EngineInterface, system: string, prompt: string): Promise<Asked> {
+  let why = ''
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await $.clock.sleep(RETRY_DELAY_MS)
+    let r
+    try {
+      r = await $.model.complete({ model: 'haiku', system, prompt, maxTokens: MAX_TOKENS, timeoutMs: 30000 })
+    } catch (err) {
+      // The engine would not send it (a blocked model, a setting): asking again changes nothing.
+      why = `refused: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
+      break
+    }
+    if (r.isAnswered) return { ok: true, text: r.text, outputTokens: r.usage.output_tokens }
+    if (r.reason === 'api-error') {
+      const { error, status } = r
+      why = status === null ? 'no connection' : `${error} ${status}`
+      const passing = status === null || status === 429 || status >= 500 || error === 'rate_limit' || error === 'overloaded'
+      if (!passing) break
+    } else if (r.reason === 'aborted') {
+      why = 'timed out or cut off' // the 30 s limit, or the plugin reloaded mid-call
+    } else {
+      why = 'empty reply'
+      break
+    }
   }
+  $.ui.log(`Lingo: translation failed (${why})`, { to: 'debug' })
+  return { ok: false, why }
+}
+
+async function translate($: EngineInterface, text: string, target: Language, allowSame: boolean) {
+  const sent = shield(text)
+  const a = await ask($, systemPrompt(target, allowSame), sent.text)
+  if (!a.ok) return { status: 'error', text: '', why: a.why } as const
+  const out = a.text.trim()
+  if (allowSame && out === SAME) return { status: 'same', text: '' } as const
+  const cut = a.outputTokens >= MAX_TOKENS ? ' …' : '' // stopped at the cap
+  return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) + cut } as const
 }
 
 /** A draft the developer wrote in the target language: SAME, or a better version (FIX). */
 async function polish($: EngineInterface, text: string, target: Language, mayTranslate: boolean) {
-  try {
-    const sent = shield(text)
-    const r = await $.model.complete({
-      model: 'haiku',
-      system: polishPrompt(target, mayTranslate),
-      prompt: sent.text,
-      maxTokens: MAX_TOKENS,
-      timeoutMs: 30000,
-    })
-    if (!r.isAnswered) return { status: 'error', text: '' } as const
-    const out = r.text.trim()
-    if (out === SAME) return { status: 'same', text: '' } as const
-    const marked = out.startsWith(FIX)
-    if (!marked && mayTranslate) return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) } as const
-    // A fix keeps the draft's own marks (backticks, emphasis): it may replace the draft.
-    const fixed = (marked ? out.slice(FIX.length) : out).trim()
-    if (!fixed || fixed === sent.text) return { status: 'same', text: '' } as const
-    // Use is offered only when every command, mention and code block comes back as written.
-    const whole = hasChip(text) ? undefined : unshieldExact(fixed, sent.kept)
-    return { status: 'fix' as const, text: unshieldForDisplay(fixed, sent.kept), fix: whole }
-  } catch {
-    return { status: 'error', text: '' } as const
-  }
+  const sent = shield(text)
+  const a = await ask($, polishPrompt(target, mayTranslate), sent.text)
+  if (!a.ok) return { status: 'error', text: '', why: a.why } as const
+  const out = a.text.trim()
+  if (out === SAME) return { status: 'same', text: '' } as const
+  const marked = out.startsWith(FIX)
+  if (!marked && mayTranslate) return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) } as const
+  // A fix keeps the draft's own marks (backticks, emphasis): it may replace the draft.
+  const fixed = (marked ? out.slice(FIX.length) : out).trim()
+  if (!fixed || fixed === sent.text) return { status: 'same', text: '' } as const
+  // Use is offered only when every command, mention and code block comes back as written.
+  const whole = hasChip(text) ? undefined : unshieldExact(fixed, sent.kept)
+  return { status: 'fix' as const, text: unshieldForDisplay(fixed, sent.kept), fix: whole }
 }
 
 async function runGloss($: EngineInterface, text: string, target: Language, id: string, allowSame: boolean) {
@@ -243,7 +260,7 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
       </Text>
     ) : value?.status === 'error' ? (
       <Button key="lingo-retry" plain onPress={() => schedule($, text, target)}>
-        <Text dimColor>{TEXT.retry}</Text>
+        <Text dimColor>{value.why ? `${TEXT.failed} (${value.why}) · Retry` : TEXT.retry}</Text>
       </Button>
     ) : (
       <Text dimColor>{TEXT.translating}</Text>
@@ -353,7 +370,7 @@ async function runPreview($: EngineInterface) {
       kind: shown ? held.kind : kind,
     } satisfies Draft)
     previewGloss = id
-    let r: { status: 'done' | 'fix' | 'same' | 'error'; text: string; fix?: string }
+    let r: { status: 'done' | 'fix' | 'same' | 'error'; text: string; fix?: string; why?: string }
     try {
       r = kind === 'translate' ? await translate($, src, target, mode === 'ask') : await polish($, src, target, mayTranslate)
     } finally {
@@ -362,7 +379,7 @@ async function runPreview($: EngineInterface) {
     // Settled answers go to the gloss too, so sending this draft costs no second call;
     // an error goes there only when the sent prompt was waiting on it (it shows Retry).
     // A fix means the draft is in the target: its gloss is `same`.
-    const gloss: Gloss = r.status === 'fix' ? { status: 'same', text: '' } : { status: r.status, text: r.text }
+    const gloss: Gloss = r.status === 'fix' ? { status: 'same', text: '' } : { status: r.status, text: r.text, why: r.why }
     const waited = awaitingPreview.delete(id)
     if ((gloss.status !== 'error' || waited) && !inFlight.has(id)) await $.state.set(ref, gloss)
     // The person may have typed on meanwhile: keep only the answer for the newest draft.
@@ -371,7 +388,7 @@ async function runPreview($: EngineInterface) {
     // An unsure draft may turn out to be another language while only the polish is on.
     if (r.status === 'done' && !settings.preview) r = { status: 'same', text: '' }
     const answerKind = r.status === 'done' ? 'translate' : r.status === 'fix' ? 'polish' : kind
-    await $.state.set(DRAFT, { src, status: r.status, text: r.text, kind: answerKind, fix: r.fix } satisfies Draft)
+    await $.state.set(DRAFT, { src, status: r.status, text: r.text, kind: answerKind, fix: r.fix, why: r.why } satisfies Draft)
   } finally {
     if (previewInFlight === src) previewInFlight = undefined
   }
@@ -479,7 +496,7 @@ export const register: Register = (on, options) => {
         </Text>
         <Box flexShrink={1}>
           {d.status === 'error' ? (
-            <Text dimColor>{TEXT.failed}</Text>
+            <Text dimColor>{d.why ? `${TEXT.failed} (${d.why})` : TEXT.failed}</Text>
           ) : d.text ? (
             <Text color={ACCENT} italic dimColor={d.status === 'pending'}>
               {d.text}

@@ -46,7 +46,7 @@ States:
 | --- | --- |
 | pending | `Translating…` dim |
 | done | the translation |
-| error | `Translation failed · Retry` dim, a plain `Button` (`key="lingo-retry"`); pressing it translates again |
+| error | `Translation failed (<why>) · Retry` dim, a plain `Button` (`key="lingo-retry"`); pressing it translates again. `<why>` is a few words: `rate_limit 429`, `no connection`, `timed out or cut off`, `empty reply`, `refused: …` |
 | same | nothing (row untouched) |
 
 ### 3.2 Language tag
@@ -94,7 +94,7 @@ Languages are listed by their own names, never translated.
 | Already in target | Remembered for that draft (`same`): nothing drawn, and no new request on a pause or caret move |
 | Shared with the gloss | A settled preview answer is also stored as the gloss of that text, so sending the draft costs no second request; a draft sent while its preview is still out waits for that request (on its error, the gloss shows Retry) |
 | Duplicates | One request per distinct draft at a time |
-| On error | Shows `Translation failed` (no retry button here; typing again retries) |
+| On error | Shows `Translation failed (<why>)` (no retry button here; typing again retries) |
 
 ### 3.5 Polish band (a draft already in the target language)
 
@@ -186,3 +186,4 @@ UI strings are English in 0.1; localizing them to the person's source language i
 | Token cap | 4096 output tokens per gloss; a gloss that hits it ends with ` …` |
 | Concurrency | At most 2 glosses translate at once; waiting ones start newest first (the rows nearest the prompt) |
 | Orphans | A gloss left `pending` by a module that reloaded mid-request is translated again when its row is drawn |
+| Retries | A failure that may pass (rate limit, overload, 5xx, no connection, cut off) is retried once after 1.5 s; others (an auth error, an empty reply, a refused model) are not. Each failure is written to the debug log as `Lingo: translation failed (<why>)` |

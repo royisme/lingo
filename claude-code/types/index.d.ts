@@ -1,5 +1,5 @@
 /** One translation, keyed by a hash of target language + source text. `same`: already in the target. */
-export type Gloss = { status: 'pending' | 'done' | 'same' | 'error'; text: string }
+export type Gloss = { status: 'pending' | 'done' | 'same' | 'error'; text: string; /** With `error`: why, in a few words. */ why?: string }
 
 /**
  * Live preview of the draft in the prompt box. `done`: a translation; `fix`: a better version of a
@@ -13,6 +13,8 @@ export type Draft = {
   kind?: 'translate' | 'polish'
   /** With `fix`: the whole better version for the prompt box, its code, commands and mentions as written. Absent when they could not all be kept: no Use then. */
   fix?: string
+  /** With `error`: why, in a few words. */
+  why?: string
 }
 
 declare module 'claude-code' {
