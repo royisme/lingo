@@ -951,7 +951,9 @@ test('a lasting failure is not retried by itself', async ($, on) => {
   await ui.unmount()
 })
 
-test('a lasting rate limit: rows say they wait, then fail with Retry within seconds, never hang', async ($, on) => {
+const NAMED = { options: { translationModel: 'claude-haiku-5-5' } } as any // a named model: no fallback
+
+test('a lasting rate limit: rows say they wait, then fail with Retry within seconds, never hang', NAMED, async ($, on) => {
   const clock = mock.clock(on)
   let calls = 0
   on('model.complete', () => {
@@ -976,4 +978,122 @@ test('a lasting rate limit: rows say they wait, then fail with Retry within seco
   expect((await late.find({ type: 'Text', text: /failed/ }))?.text).toMatch(/^Translation failed \(rate limited; paused \d+ s\) · Retry$/)
   await late.unmount()
   await ui.unmount()
+})
+
+test('the pace adapts: after rate limits, calls start further apart than the base second', NAMED, async ($, on) => {
+  const clock = mock.clock(on)
+  const starts: Array<[string, number]> = []
+  let t = 0
+  on('model.complete', (_: any, e: any) => {
+    starts.push([e.prompt, t])
+    return e.prompt === '第一条消息'
+      ? { value: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE } }
+      : { value: { isAnswered: true, text: 'ok', usage: USAGE } }
+  })
+  engineRow(on)
+  const tick = async (n: number) => {
+    for (let i = 0; i < n; i++) {
+      t += 1000
+      await clock.advance(1000)
+      await clock.settle()
+    }
+  }
+  const a = await $.ui.mount(userRow('第一条消息', 'desktop', 'm-gap-1'))
+  await clock.settle()
+  await tick(40) // three 429s: the gap is now 8 s
+  const b = await $.ui.mount(userRow('第二条消息', 'desktop', 'm-gap-2'))
+  const c = await $.ui.mount(userRow('第三条消息', 'desktop', 'm-gap-3'))
+  await clock.settle()
+  await tick(12)
+  const at = (p: string) => starts.find(([q]) => q === p)?.[1]
+  expect(Math.abs(at('第三条消息')! - at('第二条消息')!)).toBeGreaterThanOrEqual(4000)
+  for (const ui of [a, b, c]) await ui.unmount()
+})
+
+test('a rate limit names the account window that is nearly spent', async ($, on) => {
+  const clock = mock.clock(on)
+  on('model.complete', () => ({ value: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE } }))
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: {},
+      rateLimits: [
+        { kind: 'seven_day', percentUsed: 40 },
+        { kind: 'five_hour', percentUsed: 100 },
+      ],
+    },
+  }))
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-window'))
+  for (let i = 0; i < 4; i++) {
+    await clock.advance(5000)
+    await clock.settle()
+  }
+  expect((await ui.find({ type: 'Text', text: /failed/ }))?.text).toBe('Translation failed (rate_limit 429; five_hour 100%) · Retry')
+  await ui.unmount()
+})
+
+test('calls ask for the lowest effort', async ($, on) => {
+  const clock = mock.clock(on)
+  const efforts: unknown[] = []
+  on('model.complete', (_: any, e: any) => {
+    efforts.push(e.effort)
+    return { value: { isAnswered: true, text: 'Check the logs.', usage: USAGE } }
+  })
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-effort'))
+  await clock.settle()
+  expect(efforts).toEqual(['low'])
+  await ui.unmount()
+})
+
+test('Haiku 5.5 rate-limited twice: Haiku 4.5 takes over, and later rows go to it directly', async ($, on) => {
+  const clock = mock.clock(on)
+  const models: string[] = []
+  on('model.complete', (_: any, e: any) => {
+    models.push(e.model)
+    return e.model === 'haiku'
+      ? { value: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE } }
+      : { value: { isAnswered: true, text: `T ${e.prompt}`, usage: USAGE } }
+  })
+  engineRow(on)
+  const a = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-fb-1'))
+  for (let i = 0; i < 3; i++) {
+    await clock.advance(5000)
+    await clock.settle()
+  }
+  expect(models).toEqual(['haiku', 'haiku', 'claude-haiku-4-5'])
+  expect((await a.find({ type: 'Text', text: /^T / }))?.text).toBe('T 看一下日志')
+  const b = await $.ui.mount(userRow('再看一下配置', 'desktop', 'm-fb-2'))
+  await clock.advance(1100)
+  await clock.settle()
+  expect(models.slice(3)).toEqual(['claude-haiku-4-5'])
+  expect((await b.find({ type: 'Text', text: /^T / }))?.text).toBe('T 再看一下配置')
+  await a.unmount()
+  await b.unmount()
+})
+
+test('after the fallback window, Haiku 5.5 is tried again', async ($, on) => {
+  const clock = mock.clock(on)
+  const models: string[] = []
+  let limited = true
+  on('model.complete', (_: any, e: any) => {
+    models.push(e.model)
+    return e.model === 'haiku' && limited
+      ? { value: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE } }
+      : { value: { isAnswered: true, text: 'ok', usage: USAGE } }
+  })
+  engineRow(on)
+  const a = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-fb-3'))
+  for (let i = 0; i < 3; i++) {
+    await clock.advance(5000)
+    await clock.settle()
+  }
+  limited = false
+  await clock.advance(31 * 60_000)
+  const b = await $.ui.mount(userRow('再看一下配置', 'desktop', 'm-fb-4'))
+  await clock.settle()
+  expect(models.at(-1)).toBe('haiku')
+  await a.unmount()
+  await b.unmount()
 })

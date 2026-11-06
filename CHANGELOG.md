@@ -7,6 +7,18 @@ All notable changes to the Lingo plugin for Claude Code are documented in this f
 ### Added
 - **OpenAI-compatible providers**: translate with a local Ollama or LM Studio, OpenRouter, Groq or any endpoint that speaks the chat-completions API. New `/config` rows `Lingo · Provider` and `Lingo · Provider URL`; the API key is a secure option (`claude plugin configure lingo`). Pacing, cooldown, retries and failure messages work the same as with Claude; a reasoning model's `<think>` block is dropped.
 
+## [0.2.5] - 2026-11-06
+
+### Changed
+- **Lowest thinking effort**: every translation asks for `effort: low`. Haiku 5.5 cannot turn thinking off and otherwise thinks at `medium`.
+- **Haiku 4.5 when Haiku 5.5 is rate-limited for plugins**: plugin calls are side queries, which some accounts rate-limit on Haiku 5.5 while serving Haiku 4.5. With the default model, two rate limits in a row switch translation to Haiku 4.5 for 30 minutes (one toast says so), then Haiku 5.5 is tried again. Haiku 4.5 costs 10x as much per token, so Haiku 5.5 stays the default. A model you name in `/config` is always kept.
+
+## [0.2.4] - 2026-11-06
+
+### Fixed
+- **Pace adapts to the account's limit**: the gap between calls doubles on each rate limit (1 s up to 10 s) and shrinks back by 0.5 s on each success. An account whose haiku limit is lower than one call a second no longer keeps hitting 429.
+- **Rate-limit lines name a spent usage window**: `Translation failed (rate_limit 429; five_hour 100%, resets 18:30)` when a plan window is 80 % used or more.
+
 ## [0.2.3] - 2026-11-06
 
 ### Fixed

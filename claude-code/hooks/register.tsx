@@ -77,8 +77,14 @@ const ACCENT = 'suggestion'
 /** Quiet time before a draft is previewed: every edit or caret move starts it over (an IME pause is long). */
 const PREVIEW_DELAY_MS = 1500
 const MAX_TOKENS = 4096
-/** Calls start at least this far apart, whoever makes them (glosses, the preview). */
+/**
+ * Calls start at least `gap` apart, whoever makes them (glosses, the preview). The gap adapts to
+ * the account: it doubles on each rate limit (up to MAX_GAP_MS) and shrinks by GAP_STEP_MS on each
+ * success, back to MIN_GAP_MS, so Lingo settles under whatever per-minute limit the account has.
+ */
 const MIN_GAP_MS = 1000
+const MAX_GAP_MS = 10000
+const GAP_STEP_MS = 500
 /** After a rate limit or an overload every call waits this long, doubling up to COOLDOWN_MAX_MS. */
 const COOLDOWN_MS = 5000
 const COOLDOWN_MAX_MS = 60000
@@ -131,22 +137,60 @@ function glossId(target: Language, text: string): string {
 /** `passing`: the failure may pass (a rate limit, an overload, a dropped call), so a later try may work. */
 type Asked = { ok: true; text: string; cut: boolean } | { ok: false; why: string; passing: boolean }
 
+/** Points at the /config row when the model itself looks like the trouble. */
+function modelHint(model: string): string {
+  return `model "${model}" unavailable; set Lingo · Translation model in /config`
+}
+
+// ---- model choice: the cheap Haiku, and Haiku 4.5 when the account limits it ---------------
+
 /**
- * One completion, retried once after a pause when the failure may pass (a rate limit, an
+ * Plugin calls go out as side queries (`$.model.complete` is a `hook_prompt` request of class
+ * `auxiliary`), and some accounts rate-limit those on Haiku 5.5 while serving them on Haiku 4.5.
+ * With the default `haiku`, two rate limits in a row move translation to Haiku 4.5 (ten times
+ * the price) for FALLBACK_MS, then Haiku 5.5 is tried again. A model named in /config is kept.
+ */
+const DEFAULT_MODEL = 'haiku'
+const FALLBACK_MODEL = 'claude-haiku-4-5'
+const FALLBACK_MS = 30 * 60_000
+let limitedInARow = 0
+let fallbackUntil = 0
+let fallbackToldOnce = false
+
+async function currentModel($: EngineInterface): Promise<string> {
+  if (settings.model !== DEFAULT_MODEL) return settings.model
+  return fallbackUntil > (await $.clock.now()) ? FALLBACK_MODEL : DEFAULT_MODEL
+}
+
+/** Moves to FALLBACK_MODEL for a while; the cooldown was the other model's, so it is cleared. */
+async function fallBack($: EngineInterface) {
+  const now = await $.clock.now()
+  fallbackUntil = now + FALLBACK_MS
+  limitedInARow = 0
+  cooldown = 0
+  gap = MIN_GAP_MS
+  nextStart = now
+  await showLimited($, false)
+  $.ui.log(`Lingo: ${DEFAULT_MODEL} is rate-limited as a side query; translating with ${FALLBACK_MODEL} for 30 min`, { to: 'debug' })
+  if (!fallbackToldOnce) {
+    fallbackToldOnce = true
+    $.ui.toast(`Lingo: Haiku 5.5 is rate-limited for plugins on this account; using Haiku 4.5 for now`)
+  }
+}
+
+/**
+ * One completion at the lowest effort, tried again when the failure may pass (a rate limit, an
  * overload, a 5xx, a dropped connection, a call cut off). A failure says why in a few words,
  * drawn on the failed line and written to the debug log.
  */
-/** Points at the /config row when the model itself looks like the trouble. */
-function modelHint(): string {
-  return `model "${settings.model}" unavailable; set Lingo · Translation model in /config`
-}
 
 // Module variables: a reload starts the pacing over, which at worst sends one call early.
 let nextStart = 0
 let cooldown = 0
+let gap = MIN_GAP_MS
 
 /**
- * Waits for this call's slot: MIN_GAP_MS after the last one, and past any cooldown.
+ * Waits for this call's slot: `gap` after the last one, and past any cooldown.
  * Resolves 0 once it is this call's turn, or, without waiting, how long it would have to wait
  * when that is past MAX_WAIT_MS.
  */
@@ -154,9 +198,31 @@ async function waitTurn($: EngineInterface): Promise<number> {
   const now = await $.clock.now()
   const at = Math.max(now, nextStart)
   if (at - now > MAX_WAIT_MS) return at - now
-  nextStart = at + MIN_GAP_MS
+  nextStart = at + gap
   if (at > now) await $.clock.sleep(at - now)
   return 0
+}
+
+/**
+ * The account's usage windows that are nearly spent (`five_hour`, `seven_day`, a gateway's
+ * spend limit), for a rate-limit line: tells a spent plan from calls that came too fast.
+ */
+async function accountWindows($: EngineInterface): Promise<string> {
+  try {
+    const hot = (await $.session.usage()).rateLimits
+      .filter(w => w.percentUsed >= 80)
+      .sort((a, b) => b.percentUsed - a.percentUsed)
+    const w = hot[0]
+    if (!w) return ''
+    const at = w.resetsAt ? new Date(w.resetsAt) : undefined
+    const resets =
+      at && !Number.isNaN(at.getTime())
+        ? `, resets ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+        : ''
+    return `; ${w.kind} ${w.percentUsed}%${resets}`
+  } catch {
+    return ''
+  }
 }
 
 let limitedShown = false
@@ -171,27 +237,40 @@ async function showLimited($: EngineInterface, on: boolean) {
 /** A rate limit or an overload: every call waits, longer each time until one goes through. */
 async function backOff($: EngineInterface) {
   cooldown = cooldown ? Math.min(cooldown * 2, COOLDOWN_MAX_MS) : COOLDOWN_MS
+  gap = Math.min(gap * 2, MAX_GAP_MS)
   nextStart = Math.max(nextStart, (await $.clock.now()) + cooldown)
   await showLimited($, true)
 }
 
 /** One call through Claude Code's own client (`$.model.complete`). */
 async function viaClaude($: EngineInterface, system: string, prompt: string): Promise<Attempt> {
+  const model = await currentModel($)
   let r
   try {
-    r = await $.model.complete({ model: settings.model, system, prompt, maxTokens: MAX_TOKENS, timeoutMs: CALL_TIMEOUT_MS })
+    // `low` is the least thinking a plugin can ask for: Haiku 5.5 cannot turn thinking off and
+    // runs adaptive thinking at `medium` unless told; a model without effort (Haiku 4.5) drops it.
+    r = await $.model.complete({ model, system, prompt, maxTokens: MAX_TOKENS, effort: 'low', timeoutMs: CALL_TIMEOUT_MS })
   } catch (err) {
     // The engine would not send it (a model not allowed, a setting): asking again changes nothing.
-    const why = `${modelHint()}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
+    const why = `${modelHint(model)}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
     return { ok: false, why, limited: false, passing: false }
   }
-  if (r.isAnswered) return { ok: true, text: r.text, cut: r.usage.output_tokens >= MAX_TOKENS }
+  if (r.isAnswered) {
+    limitedInARow = 0
+    return { ok: true, text: r.text, cut: r.usage.output_tokens >= MAX_TOKENS }
+  }
   if (r.reason === 'api-error') {
     const { error, status } = r
     // An alias may name a model this account or gateway does not serve (haiku 5.5 where only 4.5 is).
     const badModel = error === 'model_not_found' || status === 404 || (status === 400 && error === 'invalid_request')
-    const why = status === null ? 'no connection' : badModel ? `${modelHint()} (${error} ${status})` : `${error} ${status}`
+    let why = status === null ? 'no connection' : badModel ? `${modelHint(model)} (${error} ${status})` : `${error} ${status}`
     const limited = status === 429 || status === 529 || error === 'rate_limit' || error === 'overloaded'
+    const rateLimited = status === 429 || error === 'rate_limit'
+    if (rateLimited) why += await accountWindows($)
+    if (rateLimited && model === DEFAULT_MODEL && ++limitedInARow >= 2) {
+      await fallBack($)
+      return { ok: false, why, limited: false, passing: true } // the next try goes to the fallback model at once
+    }
     return { ok: false, why, limited, passing: limited || status === null || status >= 500 }
   }
   if (r.reason === 'aborted') return { ok: false, why: 'timed out or cut off', limited: false, passing: true }
@@ -241,6 +320,7 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
     const a = settings.provider === 'openai' ? await viaOpenAI($, system, prompt) : await viaClaude($, system, prompt)
     if (a.ok) {
       cooldown = 0
+      gap = Math.max(MIN_GAP_MS, gap - GAP_STEP_MS)
       await showLimited($, false)
       return a
     }
