@@ -92,7 +92,7 @@ Languages are listed by their own names, never translated.
 | Cleared | On submit, on a cleared box, when the draft becomes target-language |
 | Stale answers | Dropped if the draft changed, the target language changed, or the preview was turned off while translating |
 | Already in target | Remembered for that draft (`same`): nothing drawn, and no new request on a pause or caret move |
-| Shared with the gloss | A settled preview answer is also stored as the gloss of that text, so sending the draft costs no second request |
+| Shared with the gloss | A settled preview answer is also stored as the gloss of that text, so sending the draft costs no second request; a draft sent while its preview is still out waits for that request (on its error, the gloss shows Retry) |
 | Duplicates | One request per distinct draft at a time |
 | On error | Shows `Translation failed` (no retry button here; typing again retries) |
 

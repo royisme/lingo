@@ -61,6 +61,10 @@ const inFlight = new Set<string>()
 const queue: Array<() => void> = []
 let running = 0
 let previewInFlight: string | undefined
+/** The gloss the preview is translating now: a prompt sent meanwhile waits for it, not a second call. */
+let previewGloss: string | undefined
+/** Glosses asked for while the preview held them; on a preview error they turn into a retry. */
+const awaitingPreview = new Set<string>()
 let previewTimer: { cancel: () => void } | undefined
 
 /** One gloss per target and text; the preview of a draft and the sent prompt share it. */
@@ -120,6 +124,10 @@ function schedule($: EngineInterface, text: string, target: Language) {
   if (verdict === 'skip') return
   const id = glossId(target, text)
   if (inFlight.has(id)) return
+  if (id === previewGloss) {
+    awaitingPreview.add(id)
+    return
+  }
   inFlight.add(id)
   const allowSame = verdict === 'ask'
   queue.push(() => $.clock.after(0, () => void runGloss($, text, target, id, allowSame).finally(done)))
@@ -267,9 +275,17 @@ async function runPreview($: EngineInterface) {
     }
     const prev = held?.status === 'done' ? held.text : ''
     await $.state.set(DRAFT, { src, status: 'pending', text: prev } satisfies Draft)
-    const r = await translate($, src, target, verdict === 'ask')
-    // Settled answers go to the gloss too, so sending this draft costs no second call.
-    if (r.status !== 'error' && !inFlight.has(id)) await $.state.set(ref, r satisfies Gloss)
+    previewGloss = id
+    let r: Gloss
+    try {
+      r = await translate($, src, target, verdict === 'ask')
+    } finally {
+      if (previewGloss === id) previewGloss = undefined
+    }
+    // Settled answers go to the gloss too, so sending this draft costs no second call;
+    // an error goes there only when the sent prompt was waiting on it (it shows Retry).
+    const waited = awaitingPreview.delete(id)
+    if ((r.status !== 'error' || waited) && !inFlight.has(id)) await $.state.set(ref, r satisfies Gloss)
     // The person may have typed on meanwhile: keep only the answer for the newest draft.
     if ((await $.prompt.read()).text.trim() !== src) return
     if (settings.target?.code !== target.code || !settings.preview) return

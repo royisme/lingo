@@ -5,7 +5,7 @@ All notable changes to the Lingo plugin for Claude Code are documented in this f
 ## [0.1.1] - 2026-11-06
 
 ### Fixed
-- **No double translation of a sent prompt**: the live preview's answer is stored as that text's gloss, so a previewed draft costs one model call, not two.
+- **No double translation of a sent prompt**: the live preview's answer is stored as that text's gloss, and a prompt sent while its preview is still translating waits for that request, so a previewed draft costs one model call, not two.
 - **Drafts already in the target language** are asked about once; pausing or moving the caret no longer re-asks the model.
 - **Stuck `Translating…`**: a gloss left pending by a module reload (e.g. a `/config` change mid-request) is translated again.
 - **Markdown in glosses**: translations are plain text; leftover `#`, `**` and backticks are stripped.

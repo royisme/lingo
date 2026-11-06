@@ -476,3 +476,64 @@ test('at most two glosses translate at once; of those waiting, the newest goes f
   for (const ui of uis) await ui.unmount()
 })
 
+
+test('a prompt sent while its preview is still translating waits for it: one call', async ($, on) => {
+  const clock = mock.clock(on)
+  let box = '帮我查一下超时'
+  let calls = 0
+  const finish: Array<() => void> = []
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  on('model.complete', () => {
+    calls++
+    return new Promise(res =>
+      finish.push(() => res({ value: { isAnswered: true, text: 'Check the timeout for me.', usage: USAGE } })),
+    )
+  })
+  engineRow(on)
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
+
+  await ($.prompt as any).change({ text: box, cursor: 7, origin: { kind: 'engine' } })
+  await clock.advance(700) // the preview's request is out
+  box = ''
+  await ($.prompt as any).submit({ text: '帮我查一下超时', origin: { kind: 'composer' } })
+  const ui = await $.ui.mount(userRow('帮我查一下超时', 'desktop', 'm-race'))
+  await clock.settle()
+  expect(calls).toBe(1)
+  finish.shift()!()
+  await clock.settle()
+  expect(calls).toBe(1)
+  expect((await ui.find({ type: 'Text', text: /timeout for me/ }))?.text).toBe('Check the timeout for me.')
+  await ui.unmount()
+})
+
+test('if that preview fails, the sent prompt shows Retry', async ($, on) => {
+  const clock = mock.clock(on)
+  let box = '帮我查一下日志'
+  let calls = 0
+  const finish: Array<() => void> = []
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  on('model.complete', () => {
+    calls++
+    if (calls === 1) return new Promise(res => finish.push(() => res({ value: { isAnswered: false, reason: 'empty-reply', usage: USAGE } })))
+    return { value: { isAnswered: true, text: 'Check the logs for me.', usage: USAGE } }
+  })
+  engineRow(on)
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
+
+  await ($.prompt as any).change({ text: box, cursor: 7, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  box = ''
+  await ($.prompt as any).submit({ text: '帮我查一下日志', origin: { kind: 'composer' } })
+  const ui = await $.ui.mount(userRow('帮我查一下日志', 'desktop', 'm-race-fail'))
+  await clock.settle()
+  finish.shift()!()
+  await clock.settle()
+  expect(await ui.find({ key: 'lingo-retry' })).toBeDefined()
+  await ui.press({ key: 'lingo-retry' })
+  await clock.settle()
+  expect(calls).toBe(2)
+  expect((await ui.find({ type: 'Text', text: /logs for me/ }))?.text).toBe('Check the logs for me.')
+  await ui.unmount()
+})
