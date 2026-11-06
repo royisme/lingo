@@ -1,5 +1,12 @@
 /** One translation, keyed by a hash of target language + source text. `same`: already in the target. */
-export type Gloss = { status: 'pending' | 'done' | 'same' | 'error'; text: string; /** With `error`: why, in a few words. */ why?: string }
+export type Gloss = {
+  status: 'pending' | 'done' | 'same' | 'error'
+  text: string
+  /** With `error`: why, in a few words. */
+  why?: string
+  /** With `error`: the failure may pass (a rate limit), so the row is tried again once by itself. */
+  passing?: boolean
+}
 
 /**
  * Live preview of the draft in the prompt box. `done`: a translation; `fix`: a better version of a

@@ -218,9 +218,19 @@ test('the draft preview shows above the prompt after a pause', async ($, on) => 
   on('prompt.change', (_: any, e: any) => ({ text: e.text }))
 
   await ($.prompt as any).change({ text: '先别改代码', cursor: 5, origin: { kind: 'engine' } })
-  await clock.advance(300)
+  await clock.advance(1000)
   await ($.prompt as any).change({ text: '先别改代码', cursor: 5, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1000) // 2 s since the first edit, 1 s since the last: still waiting
+  const early = await $.ui.mount({
+    plugin: 'lingo',
+    surface: 'desktop',
+    component: 'AbovePrompt',
+    requestId: 'band-early',
+    props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80 },
+  } as any)
+  expect(await early.find({ type: 'Text', text: /change the code|Translat/ })).toBeUndefined()
+  await early.unmount()
+  await clock.advance(600)
 
   const ui = await $.ui.mount({
     plugin: 'lingo',
@@ -257,6 +267,7 @@ test('translation failure shows retry button and clicking it recovers on success
 
   shouldFail = false
   await ui.press({ key: 'lingo-retry' })
+  await clock.advance(1100) // calls start at least a second apart
   await clock.settle()
 
   expect(completeCount).toBe(2)
@@ -282,6 +293,7 @@ test('model isAnswered false also shows failed and can retry', async ($, on) => 
 
   expect(await ui.find({ key: 'lingo-retry' })).toBeDefined()
   await ui.press({ key: 'lingo-retry' })
+  await clock.advance(1100)
   await clock.settle()
 
   expect((await ui.find({ type: 'Text', text: /Second attempt succeeded/ }))?.text).toBe('Second attempt succeeded.')
@@ -316,11 +328,11 @@ test('runPreview does not duplicate requests when a translation for the same src
   on('prompt.change', (_: any, e: any) => ({ text: e.text }))
 
   await ($.prompt as any).change({ text: '重复草稿', cursor: 4, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
 
   // Trigger change again with same text
   await ($.prompt as any).change({ text: '重复草稿', cursor: 4, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
 
   expect(calls).toBe(1)
   if (finishModel!) finishModel!()
@@ -339,7 +351,7 @@ test('draft preview drops result if prompt changed while in flight', async ($, o
   on('prompt.change', (_: any, e: any) => ({ text: e.text }))
 
   await ($.prompt as any).change({ text: '第一版草稿', cursor: 5, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
 
   // User types something else
   currentText = '第二版草稿'
@@ -416,7 +428,7 @@ test('a previewed draft costs no second call once sent', async ($, on) => {
   on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
 
   await ($.prompt as any).change({ text: box, cursor: 5, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
   box = ''
   await ($.prompt as any).submit({ text: '先别改代码 ', origin: { kind: 'composer' } })
   await clock.settle()
@@ -435,7 +447,7 @@ test('a draft already in the target language is asked about once, not on every p
   on('prompt.change', (_: any, e: any) => ({ text: e.text }))
   for (let i = 0; i < 5; i++) {
     await ($.prompt as any).change({ text: 'Run lint again quickly', cursor: i, origin: { kind: 'engine' } })
-    await clock.advance(700)
+    await clock.advance(1600)
   }
   expect(asked.length).toBe(1)
   const ui = await $.ui.mount({
@@ -493,9 +505,16 @@ test('at most two glosses translate at once; of those waiting, the newest goes f
   const uis = []
   for (const [i, t] of texts.entries()) uis.push(await $.ui.mount(userRow(t, 'desktop', `m-q${i}`)))
   await clock.settle()
+  expect(started.length).toBe(1) // the second waits its turn: calls start a second apart
+  await clock.advance(1100)
+  await clock.settle()
   expect(started.length).toBe(2)
+  await clock.advance(5000)
+  await clock.settle()
+  expect(started.length).toBe(2) // two slots, both busy
   while (finish.length) {
     finish.shift()!()
+    await clock.advance(1100)
     await clock.settle()
   }
   expect(started.length).toBe(5)
@@ -522,7 +541,7 @@ test('a prompt sent while its preview is still translating waits for it: one cal
   on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
 
   await ($.prompt as any).change({ text: box, cursor: 7, origin: { kind: 'engine' } })
-  await clock.advance(700) // the preview's request is out
+  await clock.advance(1600) // the preview's request is out
   box = ''
   await ($.prompt as any).submit({ text: '帮我查一下超时', origin: { kind: 'composer' } })
   const ui = await $.ui.mount(userRow('帮我查一下超时', 'desktop', 'm-race'))
@@ -551,7 +570,7 @@ test('if that preview fails, the sent prompt shows Retry', async ($, on) => {
   on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
 
   await ($.prompt as any).change({ text: box, cursor: 7, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
   box = ''
   await ($.prompt as any).submit({ text: '帮我查一下日志', origin: { kind: 'composer' } })
   const ui = await $.ui.mount(userRow('帮我查一下日志', 'desktop', 'm-race-fail'))
@@ -560,6 +579,7 @@ test('if that preview fails, the sent prompt shows Retry', async ($, on) => {
   await clock.settle()
   expect(await ui.find({ key: 'lingo-retry' })).toBeDefined()
   await ui.press({ key: 'lingo-retry' })
+  await clock.advance(1100)
   await clock.settle()
   expect(calls).toBe(2)
   expect((await ui.find({ type: 'Text', text: /logs for me/ }))?.text).toBe('Check the logs for me.')
@@ -608,7 +628,7 @@ test('a draft in the target language gets a better version, and Use puts it in t
   engineRow(on)
 
   await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
   expect(systems.length).toBe(1)
   expect(systems[0]).toContain('learning English')
 
@@ -622,7 +642,7 @@ test('a draft in the target language gets a better version, and Use puts it in t
 
   // The box now holds the better version: the change it raises asks nothing more.
   await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
   expect(systems.length).toBe(1)
   await ui.unmount()
 })
@@ -637,7 +657,7 @@ test('a natural draft shows nothing, not even while it is checked', async ($, on
   engineRow(on)
 
   await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
   const ui = await $.ui.mount(BAND)
   expect(await ui.find({ type: 'Text', text: /Translat|Better|Preview/ })).toBeUndefined()
   finish()
@@ -665,7 +685,7 @@ test('a fix keeps the draft code blocks when used', async ($, on) => {
   engineRow(on)
 
   await ($.prompt as any).change({ text: box, cursor: 0, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
   expect(sent[0]).not.toContain('return null }')
   const ui = await $.ui.mount(BAND)
   await ui.press({ key: 'lingo-use' })
@@ -682,7 +702,7 @@ test('suggestions off: a draft in the target language asks nothing', { options: 
   on('prompt.change', (_: any, e: any) => ({ text: e.text }))
   engineRow(on)
   await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
   expect(asked.length).toBe(0)
 })
 
@@ -695,7 +715,7 @@ test('slash commands and shell lines get no preview and no gloss', async ($, on)
   on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
   engineRow(on)
   await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
   await ($.prompt as any).submit({ text: box, origin: { kind: 'composer' } })
   const ui = await $.ui.mount(userRow(box, 'desktop', 'm-cmd'))
   await clock.settle()
@@ -735,7 +755,7 @@ test('Use puts back commands and mentions as written, and is withheld when the m
   engineRow(on)
 
   await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1600)
   expect(sent[0]).toBe('please use ⟦1⟧ for check the ⟦2⟧ file')
   const ui = await $.ui.mount(BAND)
   expect((await ui.find({ type: 'Text', text: /check the/ }))?.text).toBe('Please use /code-review to check the @src/auth.ts file.')
@@ -748,14 +768,15 @@ test('Use puts back commands and mentions as written, and is withheld when the m
   box = 'please use /code-review for check the @src/db.ts file'
   reply = `${FIX} Please use ⟦1⟧ to check the file.`
   await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await clock.advance(1700)
+  await clock.settle()
   const again = await $.ui.mount({ ...BAND, requestId: 'band-polish-2' })
   expect((await again.find({ type: 'Text', text: /check the file/ }))?.text).toBe('Please use /code-review to check the file.')
   expect(await again.find({ key: 'lingo-use' })).toBeUndefined()
   await again.unmount()
 })
 
-test('a passing failure (rate limit) is retried once by itself', async ($, on) => {
+test('a rate limit is retried by itself after a cooldown', async ($, on) => {
   const clock = mock.clock(on)
   let calls = 0
   on('model.complete', () => {
@@ -766,7 +787,10 @@ test('a passing failure (rate limit) is retried once by itself', async ($, on) =
   engineRow(on)
   const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-429'))
   await clock.settle()
-  await clock.advance(2000)
+  await clock.advance(3000)
+  await clock.settle()
+  expect(calls).toBe(1) // still cooling down (5 s)
+  await clock.advance(3000)
   await clock.settle()
   expect(calls).toBe(2)
   expect((await ui.find({ type: 'Text', text: /Check the logs/ }))?.text).toBe('Check the logs.')
@@ -790,14 +814,14 @@ test('a lasting failure is not retried, and the failed line says why', async ($,
 
 test('the preview band says why it failed', async ($, on) => {
   const clock = mock.clock(on)
-  on('prompt.read', () => ({ value: { text: '你现在', cursor: 3 } }))
+  on('prompt.read', () => ({ value: { text: '你现在在做什么', cursor: 7 } }))
   on('model.complete', () => {
     throw new Error('model haiku is not available')
   })
   on('prompt.change', (_: any, e: any) => ({ text: e.text }))
   engineRow(on)
-  await ($.prompt as any).change({ text: '你现在', cursor: 3, origin: { kind: 'engine' } })
-  await clock.advance(700)
+  await ($.prompt as any).change({ text: '你现在在做什么', cursor: 7, origin: { kind: 'engine' } })
+  await clock.advance(1600)
   await clock.settle()
   const ui = await $.ui.mount({ ...BAND, requestId: 'band-why' })
   expect((await ui.find({ type: 'Text', text: /failed/ }))?.text).toMatch(/^Translation failed \(model "haiku" unavailable; set Lingo · Translation model in \/config: .+\)$/)
@@ -832,5 +856,97 @@ test('the translation model defaults to the haiku alias', async ($, on) => {
   const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-model-default'))
   await clock.settle()
   expect(models).toEqual(['haiku'])
+  await ui.unmount()
+})
+
+// ---- pacing and the cross-session cache ----------------------------------------
+
+test('a translation kept from an earlier session is reused: no call', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'x')
+  const id = hash('en\u0000帮我看一下登录超时')
+  on('store.get', (_: any, e: any) => ({ value: e.key === `g:${id}` ? { status: 'done', text: 'Look into the login timeout.' } : undefined }))
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-kept'))
+  await clock.settle()
+  expect(asked.length).toBe(0)
+  expect((await ui.find({ type: 'Text', text: /login timeout/ }))?.text).toBe('Look into the login timeout.')
+  await ui.unmount()
+})
+
+test('a settled translation is kept for later sessions, with an index of the newest', async ($, on) => {
+  const clock = mock.clock(on)
+  answer(on, 'Look into the login timeout.')
+  const store = new Map<string, unknown>()
+  on('store.get', (_: any, e: any) => ({ value: store.get(e.key) }))
+  on('store.set', (_: any, e: any) => {
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.delete', (_: any, e: any) => {
+    store.delete(e.key)
+    return { value: undefined }
+  })
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-keep'))
+  await clock.settle()
+  await ui.unmount()
+  const id = hash('en\u0000帮我看一下登录超时')
+  expect(store.get(`g:${id}`)).toEqual({ status: 'done', text: 'Look into the login timeout.' })
+  expect(store.get('gloss-index')).toEqual([id])
+})
+
+test('a draft too short to be worth it gets no preview', async ($, on) => {
+  const clock = mock.clock(on)
+  let box = '你现'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const asked = answer(on, 'You now')
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+  await ($.prompt as any).change({ text: box, cursor: 2, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  expect(asked.length).toBe(0)
+  box = '你现在在做什么'
+  await ($.prompt as any).change({ text: box, cursor: 7, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  await clock.settle()
+  expect(asked.length).toBe(1)
+})
+
+test('a row that failed on a rate limit (in an earlier load) is tried once more by itself', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'Look into the login timeout.')
+  engineRow(on)
+  const id = hash('en\u0000帮我看一下登录超时')
+  let stale = true
+  on('state.get', (_: any, e: any, next: any) =>
+    stale && e.key === 'gloss' && e.id === id
+      ? { value: { value: { status: 'error', text: '', why: 'rate_limit 429', passing: true }, version: 1 } }
+      : next(e),
+  )
+  on('state.set', (_: any, e: any, next: any) => {
+    if (e.key === 'gloss' && e.id === id) stale = false
+    return next(e)
+  })
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-auto'))
+  await clock.settle()
+  await ui.unmount()
+  expect(asked.length).toBe(1)
+})
+
+test('a lasting failure is not retried by itself', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'x')
+  engineRow(on)
+  const id = hash('en\u0000帮我看一下登录超时')
+  on('state.get', (_: any, e: any, next: any) =>
+    e.key === 'gloss' && e.id === id
+      ? { value: { value: { status: 'error', text: '', why: 'authentication_failed 401', passing: false }, version: 1 } }
+      : next(e),
+  )
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-noauto'))
+  await clock.settle()
+  expect(asked.length).toBe(0)
+  expect(await ui.find({ key: 'lingo-retry' })).toBeDefined()
   await ui.unmount()
 })

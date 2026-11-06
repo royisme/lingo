@@ -138,6 +138,15 @@ export function decide(text: string, target: Language): 'skip' | 'translate' | '
   return c === 'other' ? 'translate' : c === 'unsure' ? 'ask' : 'skip'
 }
 
+/**
+ * Whether a draft has enough prose for a preview to be worth a call: 4 CJK characters or
+ * 12 letters. A message still gets its gloss once sent, however short.
+ */
+export function worthPreview(text: string): boolean {
+  const c = scriptCounts(prose(text))
+  return c.han + c.kana + c.hangul >= 4 || c.latin + c.cyrillic >= 12
+}
+
 /** A slash command or a shell line (`/…`, `!…`): not prose to translate or polish. */
 export function isCommand(text: string): boolean {
   return /^\s*[/!]/.test(text)

@@ -86,7 +86,7 @@ Languages are listed by their own names, never translated.
 
 | Property | Value |
 | --- | --- |
-| Trigger | Typing pause of **600 ms** (`prompt.edit` / `prompt.change`); typing again restarts the wait |
+| Trigger | Typing pause of **1.5 s** (`prompt.edit` / `prompt.change`); every edit or caret move restarts the wait, so an IME pause between words does not fire it. A draft under 4 CJK characters or 12 letters is not previewed |
 | Shown when | Preview is on, the draft is not in the target language, no survey is up |
 | While re-translating | Previous text stays, dimmed |
 | Cleared | On submit, on a cleared box, when the draft becomes target-language |
@@ -188,4 +188,7 @@ UI strings are English in 0.1; localizing them to the person's source language i
 | Concurrency | At most 2 glosses translate at once; waiting ones start newest first (the rows nearest the prompt) |
 | Orphans | A gloss left `pending` by a module that reloaded mid-request is translated again when its row is drawn |
 | Model | `haiku` by default, resolved like `--model`; an alias can name a version the account or gateway lacks (Haiku 5.5 where only 4.5 is served), so the model is a `/config` row taking a full id. A failure that points at the model (`model_not_found`, 404, 400 `invalid_request`, a refusal) names the row: `model "<m>" unavailable; set Lingo · Translation model in /config` |
-| Retries | A failure that may pass (rate limit, overload, 5xx, no connection, cut off) is retried once after 1.5 s; others (an auth error, an empty reply, a refused model) are not. Each failure is written to the debug log as `Lingo: translation failed (<why>)` |
+| Pacing | Every call (glosses and the preview) starts at least 1 s after the last |
+| Cooldown | A rate limit or an overload pauses every call for 5 s, doubling up to 60 s, back to none after a success |
+| Retries | A failure that may pass (rate limit, overload, 5xx, no connection, cut off) is tried up to 3 times, paced as above; others (an auth error, an empty reply, a refused model) are not. A gloss that failed on one that may pass is tried once more by itself when its row is next drawn after a load. Each failure is written to the debug log as `Lingo: translation failed (<why>)` |
+| Kept across sessions | Settled glosses (`done`, `same`) go to `$.store` too, the newest 500, so a resumed or restarted session draws its history without calling the model |

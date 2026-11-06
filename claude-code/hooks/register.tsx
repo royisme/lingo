@@ -19,6 +19,7 @@ import {
   systemPrompt,
   unshieldExact,
   unshieldForDisplay,
+  worthPreview,
 } from './lang'
 import type { Language } from './lang'
 
@@ -59,9 +60,18 @@ const HIDDEN = { plugin: 'lingo', key: 'hidden' } as const
 const draft = atom(DRAFT, null)
 
 const ACCENT = 'suggestion'
-const PREVIEW_DELAY_MS = 600
+/** Quiet time before a draft is previewed: every edit or caret move starts it over (an IME pause is long). */
+const PREVIEW_DELAY_MS = 1500
 const MAX_TOKENS = 4096
-const RETRY_DELAY_MS = 1500
+/** Calls start at least this far apart, whoever makes them (glosses, the preview). */
+const MIN_GAP_MS = 1000
+/** After a rate limit or an overload every call waits this long, doubling up to COOLDOWN_MAX_MS. */
+const COOLDOWN_MS = 5000
+const COOLDOWN_MAX_MS = 60000
+const ATTEMPTS = 3
+/** Translations kept across sessions, so a resumed transcript is not translated again. */
+const STORED_GLOSSES = 500
+const STORE_INDEX = 'gloss-index'
 /** Glosses translated at once; the rest wait (a resumed session draws its whole history). */
 const MAX_PARALLEL = 2
 
@@ -82,6 +92,8 @@ const ARGUMENT_HINT = [...LANGUAGES.map(l => l.code), 'off'].join(' | ')
 // Module variables: lost on a reload, which at worst runs one translation twice.
 // A gloss left `pending` with no entry here was started by a module since reloaded: it is redone.
 const inFlight = new Set<string>()
+/** Failed glosses this module has already tried again by itself (once each). */
+const autoRetried = new Set<string>()
 /** Glosses waiting for a free slot: each starts its own translation. */
 const queue: Array<() => void> = []
 let running = 0
@@ -99,7 +111,8 @@ function glossId(target: Language, text: string): string {
 
 // ---- translation (outside any render) --------------------------------------
 
-type Asked = { ok: true; text: string; outputTokens: number } | { ok: false; why: string }
+/** `passing`: the failure may pass (a rate limit, an overload, a dropped call), so a later try may work. */
+type Asked = { ok: true; text: string; outputTokens: number } | { ok: false; why: string; passing: boolean }
 
 /**
  * One completion, retried once after a pause when the failure may pass (a rate limit, an
@@ -111,10 +124,29 @@ function modelHint(): string {
   return `model "${settings.model}" unavailable; set Lingo · Translation model in /config`
 }
 
+// Module variables: a reload starts the pacing over, which at worst sends one call early.
+let nextStart = 0
+let cooldown = 0
+
+/** Waits for this call's slot: MIN_GAP_MS after the last one, and past any cooldown. */
+async function waitTurn($: EngineInterface) {
+  const now = await $.clock.now()
+  const at = Math.max(now, nextStart)
+  nextStart = at + MIN_GAP_MS
+  if (at > now) await $.clock.sleep(at - now)
+}
+
+/** A rate limit or an overload: every call waits, longer each time until one goes through. */
+async function backOff($: EngineInterface) {
+  cooldown = cooldown ? Math.min(cooldown * 2, COOLDOWN_MAX_MS) : COOLDOWN_MS
+  nextStart = Math.max(nextStart, (await $.clock.now()) + cooldown)
+}
+
 async function ask($: EngineInterface, system: string, prompt: string): Promise<Asked> {
   let why = ''
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) await $.clock.sleep(RETRY_DELAY_MS)
+  let passing = false
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    await waitTurn($)
     let r
     try {
       r = await $.model.complete({ model: settings.model, system, prompt, maxTokens: MAX_TOKENS, timeoutMs: 30000 })
@@ -123,29 +155,64 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
       why = `${modelHint()}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
       break
     }
-    if (r.isAnswered) return { ok: true, text: r.text, outputTokens: r.usage.output_tokens }
+    if (r.isAnswered) {
+      cooldown = 0
+      return { ok: true, text: r.text, outputTokens: r.usage.output_tokens }
+    }
     if (r.reason === 'api-error') {
       const { error, status } = r
       // An alias may name a model this account or gateway does not serve (haiku 5.5 where only 4.5 is).
       const badModel = error === 'model_not_found' || status === 404 || (status === 400 && error === 'invalid_request')
       why = status === null ? 'no connection' : badModel ? `${modelHint()} (${error} ${status})` : `${error} ${status}`
-      const passing = status === null || status === 429 || status >= 500 || error === 'rate_limit' || error === 'overloaded'
-      if (!passing) break
+      const limited = status === 429 || status === 529 || error === 'rate_limit' || error === 'overloaded'
+      passing = limited || status === null || status >= 500
+      if (limited) await backOff($)
+      else if (!passing) break
     } else if (r.reason === 'aborted') {
       why = 'timed out or cut off' // the 30 s limit, or the plugin reloaded mid-call
+      passing = true
     } else {
       why = 'empty reply'
+      passing = false
       break
     }
   }
   $.ui.log(`Lingo: translation failed (${why})`, { to: 'debug' })
-  return { ok: false, why }
+  return { ok: false, why, passing }
+}
+
+// ---- translations kept across sessions ($.store) --------------------------
+
+/** A settled translation from an earlier session, if one was kept. */
+async function storedGloss($: EngineInterface, id: string): Promise<Gloss | undefined> {
+  try {
+    const v = (await $.store.get(`g:${id}`)) as Gloss | undefined
+    return v && (v.status === 'done' || v.status === 'same') ? { status: v.status, text: String(v.text ?? '') } : undefined
+  } catch {
+    return undefined
+  }
+}
+
+let storeChain: Promise<void> = Promise.resolve()
+
+/** Keeps a settled translation, the newest STORED_GLOSSES of them; writes one at a time. */
+function keepGloss($: EngineInterface, id: string, gloss: Gloss) {
+  if (gloss.status !== 'done' && gloss.status !== 'same') return
+  storeChain = storeChain
+    .then(async () => {
+      const index = ((await $.store.get(STORE_INDEX)) as string[] | undefined) ?? []
+      const next = [...index.filter(k => k !== id), id]
+      await $.store.set(`g:${id}`, { status: gloss.status, text: gloss.text })
+      for (const old of next.splice(0, Math.max(0, next.length - STORED_GLOSSES))) await $.store.delete(`g:${old}`)
+      await $.store.set(STORE_INDEX, next)
+    })
+    .catch(() => undefined) // a full or failing store only costs a translation later
 }
 
 async function translate($: EngineInterface, text: string, target: Language, allowSame: boolean) {
   const sent = shield(text)
   const a = await ask($, systemPrompt(target, allowSame), sent.text)
-  if (!a.ok) return { status: 'error', text: '', why: a.why } as const
+  if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing } as const
   const out = a.text.trim()
   if (allowSame && out === SAME) return { status: 'same', text: '' } as const
   const cut = a.outputTokens >= MAX_TOKENS ? ' …' : '' // stopped at the cap
@@ -156,7 +223,7 @@ async function translate($: EngineInterface, text: string, target: Language, all
 async function polish($: EngineInterface, text: string, target: Language, mayTranslate: boolean) {
   const sent = shield(text)
   const a = await ask($, polishPrompt(target, mayTranslate), sent.text)
-  if (!a.ok) return { status: 'error', text: '', why: a.why } as const
+  if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing } as const
   const out = a.text.trim()
   if (out === SAME) return { status: 'same', text: '' } as const
   const marked = out.startsWith(FIX)
@@ -175,8 +242,15 @@ async function runGloss($: EngineInterface, text: string, target: Language, id: 
     const { value } = await $.state.get(ref)
     // `pending` here is an orphan (this module owns `id` now): translate it again.
     if (value?.status === 'done' || value?.status === 'same') return
+    const kept = await storedGloss($, id)
+    if (kept) {
+      await $.state.set(ref, kept)
+      return
+    }
     await $.state.set(ref, { status: 'pending', text: '' } satisfies Gloss)
-    await $.state.set(ref, (await translate($, text, target, allowSame)) satisfies Gloss)
+    const gloss: Gloss = await translate($, text, target, allowSame)
+    await $.state.set(ref, gloss)
+    keepGloss($, id, gloss)
   } finally {
     inFlight.delete(id)
   }
@@ -245,7 +319,10 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
 
   const id = glossId(target, text)
   const { value } = await $.state.get({ ...GLOSS, id })
-  if (!value || (value.status === 'pending' && !inFlight.has(id))) schedule($, text, target)
+  // A row that failed on something passing (a rate limit) is tried once more by this module, paced.
+  const retry = value?.status === 'error' && value.passing === true && !autoRetried.has(id)
+  if (retry) autoRetried.add(id)
+  if (!value || (value.status === 'pending' && !inFlight.has(id)) || retry) schedule($, text, target)
   if (value?.status === 'same') return row
   if ((await $.state.get({ ...HIDDEN, id })).value) return row
   // One menu per gloss, so a row whose text (and gloss) changes never shows a stale menu.
@@ -334,7 +411,7 @@ type PreviewMode = 'translate' | 'ask' | 'polish' | 'either'
  * language), or let the model tell the two apart (`ask` / `either`, same script, unsure).
  */
 function previewMode(src: string, target: Language): PreviewMode | undefined {
-  if (isCommand(src)) return undefined
+  if (isCommand(src) || !worthPreview(src)) return undefined
   switch (classify(src, target)) {
     case 'other':
       return settings.preview ? 'translate' : undefined
@@ -365,7 +442,7 @@ async function runPreview($: EngineInterface) {
     // The prompt's gloss may already hold this text (a draft recalled from history).
     const id = glossId(target, src)
     const ref = { ...GLOSS, id }
-    const known = (await $.state.get(ref)).value
+    const known = (await $.state.get(ref)).value ?? (await storedGloss($, id))
     if (known?.status === 'done' || (known?.status === 'same' && kind === 'translate')) {
       await $.state.set(DRAFT, { src, status: known.status, text: known.text, kind: 'translate' } satisfies Draft)
       return
@@ -380,7 +457,7 @@ async function runPreview($: EngineInterface) {
       kind: shown ? held.kind : kind,
     } satisfies Draft)
     previewGloss = id
-    let r: { status: 'done' | 'fix' | 'same' | 'error'; text: string; fix?: string; why?: string }
+    let r: { status: 'done' | 'fix' | 'same' | 'error'; text: string; fix?: string; why?: string; passing?: boolean }
     try {
       r = kind === 'translate' ? await translate($, src, target, mode === 'ask') : await polish($, src, target, mayTranslate)
     } finally {
@@ -389,9 +466,12 @@ async function runPreview($: EngineInterface) {
     // Settled answers go to the gloss too, so sending this draft costs no second call;
     // an error goes there only when the sent prompt was waiting on it (it shows Retry).
     // A fix means the draft is in the target: its gloss is `same`.
-    const gloss: Gloss = r.status === 'fix' ? { status: 'same', text: '' } : { status: r.status, text: r.text, why: r.why }
+    const gloss: Gloss = r.status === 'fix' ? { status: 'same', text: '' } : { status: r.status, text: r.text, why: r.why, passing: r.passing }
     const waited = awaitingPreview.delete(id)
-    if ((gloss.status !== 'error' || waited) && !inFlight.has(id)) await $.state.set(ref, gloss)
+    if ((gloss.status !== 'error' || waited) && !inFlight.has(id)) {
+      await $.state.set(ref, gloss)
+      keepGloss($, id, gloss)
+    }
     // The person may have typed on meanwhile: keep only the answer for the newest draft.
     if ((await $.prompt.read()).text.trim() !== src) return
     if (settings.target?.code !== target.code) return

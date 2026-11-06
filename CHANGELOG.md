@@ -2,6 +2,15 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.2.2] - 2026-11-06
+
+### Fixed
+- **Fewer rate limits (429)**:
+  - Translations are kept across sessions (the newest 500), so restarting or resuming no longer re-translates the whole transcript.
+  - Calls start at least 1 s apart; a rate limit or overload pauses all calls for 5 s, doubling up to 60 s.
+  - A failure that may pass is tried up to 3 times, and a row that failed on one is retried once by itself after an update or reload.
+- **Preview waits for typing to settle**: 1.5 s of quiet (was 600 ms), so pauses while choosing IME candidates no longer fire a call each; drafts under 4 CJK characters or 12 letters are not previewed.
+
 ## [0.2.1] - 2026-11-06
 
 ### Fixed
