@@ -66,11 +66,34 @@
       "description": "Show a translation under Claude's text. Tool calls and code are never translated.",
       "default": true
     },
+    "provider": {
+      "type": "string",
+      "title": "Lingo · Provider",
+      "description": "Who translates: Claude (through Claude Code, your account) or any OpenAI-compatible endpoint, such as a local Ollama, LM Studio, OpenRouter or Groq.",
+      "default": "Claude",
+      "options": [
+        "Claude",
+        "OpenAI-compatible"
+      ]
+    },
     "translationModel": {
       "type": "string",
       "title": "Lingo · Translation model",
-      "description": "The model that translates: an alias (haiku) or a full model id (claude-haiku-4-5, or your gateway's model name). Set a full id when haiku is not available to you or names a version you can't use.",
+      "description": "The model that translates. With Claude: an alias (haiku) or a full id (claude-haiku-4-5). With an OpenAI-compatible provider: its model name (qwen2.5:7b for Ollama).",
       "default": "haiku"
+    },
+    "providerBaseUrl": {
+      "type": "string",
+      "title": "Lingo · Provider URL",
+      "description": "With an OpenAI-compatible provider: the API base, ending in /v1 (http://localhost:11434/v1 for Ollama, https://openrouter.ai/api/v1, https://api.groq.com/openai/v1).",
+      "default": "http://localhost:11434/v1"
+    },
+    "providerApiKey": {
+      "type": "string",
+      "title": "Lingo · Provider API key",
+      "description": "With an OpenAI-compatible provider: its API key, sent as a Bearer token. Leave empty for a local Ollama. Kept in secure storage.",
+      "default": "",
+      "sensitive": true
     }
   }
 }

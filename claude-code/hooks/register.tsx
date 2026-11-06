@@ -1,5 +1,5 @@
 import { atom, read } from 'claude-code'
-import type { EngineInterface, PluginOptions, Register, RenderElement, RenderInput } from 'claude-code'
+import type { EngineInterface, HttpInit, HttpResponse, PluginOptions, Register, RenderElement, RenderInput } from 'claude-code'
 
 import type { Draft, Gloss } from '../types'
 import {
@@ -22,13 +22,20 @@ import {
   worthPreview,
 } from './lang'
 import type { Language } from './lang'
+import { chatRequest, hostOf, readChat } from './openai'
+import type { Attempt } from './openai'
 
 // ---- settings (from /config; a change there reloads this module) -----------
 
 type Settings = {
   target: Language | undefined
-  /** The model that translates: an alias (`haiku`) or a full id (`claude-haiku-4-5`). */
+  /** Who translates: Claude through Claude Code, or any OpenAI-compatible endpoint (Ollama, OpenRouter, ...). */
+  provider: 'claude' | 'openai'
+  /** The model that translates: an alias (`haiku`), a full id, or the provider's model name (`qwen2.5:7b`). */
   model: string
+  /** With `openai`: the API base (`http://localhost:11434/v1`) and its key (none for a local Ollama). */
+  baseUrl: string
+  apiKey: string
   preview: boolean
   polish: boolean
   prompts: boolean
@@ -36,12 +43,18 @@ type Settings = {
 }
 
 const CONFIG_KEY = 'lingo.targetLanguage'
+const OPENAI_COMPATIBLE = 'OpenAI-compatible'
+const OLLAMA_URL = 'http://localhost:11434/v1'
+const CALL_TIMEOUT_MS = 30000
 
 function readSettings(options: PluginOptions): Settings {
   const bool = (v: unknown) => v !== false && v !== 'false'
   return {
     target: findLanguage(String(options.targetLanguage ?? 'English')),
+    provider: String(options.provider ?? '') === OPENAI_COMPATIBLE ? 'openai' : 'claude',
     model: String(options.translationModel ?? '').trim() || 'haiku',
+    baseUrl: String(options.providerBaseUrl ?? '').trim() || OLLAMA_URL,
+    apiKey: String(options.providerApiKey ?? ''),
     preview: bool(options.previewWhileTyping),
     polish: bool(options.polishWhileTyping),
     prompts: bool(options.translatePrompts),
@@ -116,7 +129,7 @@ function glossId(target: Language, text: string): string {
 // ---- translation (outside any render) --------------------------------------
 
 /** `passing`: the failure may pass (a rate limit, an overload, a dropped call), so a later try may work. */
-type Asked = { ok: true; text: string; outputTokens: number } | { ok: false; why: string; passing: boolean }
+type Asked = { ok: true; text: string; cut: boolean } | { ok: false; why: string; passing: boolean }
 
 /**
  * One completion, retried once after a pause when the failure may pass (a rate limit, an
@@ -162,6 +175,59 @@ async function backOff($: EngineInterface) {
   await showLimited($, true)
 }
 
+/** One call through Claude Code's own client (`$.model.complete`). */
+async function viaClaude($: EngineInterface, system: string, prompt: string): Promise<Attempt> {
+  let r
+  try {
+    r = await $.model.complete({ model: settings.model, system, prompt, maxTokens: MAX_TOKENS, timeoutMs: CALL_TIMEOUT_MS })
+  } catch (err) {
+    // The engine would not send it (a model not allowed, a setting): asking again changes nothing.
+    const why = `${modelHint()}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
+    return { ok: false, why, limited: false, passing: false }
+  }
+  if (r.isAnswered) return { ok: true, text: r.text, cut: r.usage.output_tokens >= MAX_TOKENS }
+  if (r.reason === 'api-error') {
+    const { error, status } = r
+    // An alias may name a model this account or gateway does not serve (haiku 5.5 where only 4.5 is).
+    const badModel = error === 'model_not_found' || status === 404 || (status === 400 && error === 'invalid_request')
+    const why = status === null ? 'no connection' : badModel ? `${modelHint()} (${error} ${status})` : `${error} ${status}`
+    const limited = status === 429 || status === 529 || error === 'rate_limit' || error === 'overloaded'
+    return { ok: false, why, limited, passing: limited || status === null || status >= 500 }
+  }
+  if (r.reason === 'aborted') return { ok: false, why: 'timed out or cut off', limited: false, passing: true }
+  return { ok: false, why: 'empty reply', limited: false, passing: false }
+}
+
+/** `$.http.fetch` has no time limit of its own: give up waiting after `ms`. */
+async function fetchWithin($: EngineInterface, url: string, init: HttpInit, ms: number): Promise<HttpResponse | 'timeout'> {
+  const stop = new AbortController()
+  const late = $.clock.sleep(ms, { signal: stop.signal }).then(
+    () => 'timeout' as const,
+    () => 'timeout' as const,
+  )
+  try {
+    return await Promise.race([$.http.fetch(url, init), late])
+  } finally {
+    stop.abort()
+  }
+}
+
+/** One call to an OpenAI-compatible endpoint (`POST <base>/chat/completions`). */
+async function viaOpenAI($: EngineInterface, system: string, prompt: string): Promise<Attempt> {
+  if (settings.model === 'haiku')
+    return { ok: false, why: "set Lingo · Translation model to your provider's model name", limited: false, passing: false }
+  const req = chatRequest(settings.baseUrl, settings.apiKey, settings.model, system, prompt, MAX_TOKENS)
+  let res
+  try {
+    res = await fetchWithin($, req.url, req.init, CALL_TIMEOUT_MS)
+  } catch {
+    // The engine's message repeats the URL; the host says enough. Ollama not running is the usual cause.
+    return { ok: false, why: `no connection to ${hostOf(req.url)}; is it running?`, limited: false, passing: true }
+  }
+  if (res === 'timeout') return { ok: false, why: 'timed out', limited: false, passing: true }
+  return readChat(res.status, res.text)
+}
+
 async function ask($: EngineInterface, system: string, prompt: string): Promise<Asked> {
   let why = ''
   let passing = false
@@ -172,38 +238,18 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
       passing = true
       break
     }
-    let r
-    try {
-      r = await $.model.complete({ model: settings.model, system, prompt, maxTokens: MAX_TOKENS, timeoutMs: 30000 })
-    } catch (err) {
-      // The engine would not send it (a model not allowed, a setting): asking again changes nothing.
-      why = `${modelHint()}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
-      break
-    }
-    if (r.isAnswered) {
+    const a = settings.provider === 'openai' ? await viaOpenAI($, system, prompt) : await viaClaude($, system, prompt)
+    if (a.ok) {
       cooldown = 0
       await showLimited($, false)
-      return { ok: true, text: r.text, outputTokens: r.usage.output_tokens }
+      return a
     }
-    if (r.reason === 'api-error') {
-      const { error, status } = r
-      // An alias may name a model this account or gateway does not serve (haiku 5.5 where only 4.5 is).
-      const badModel = error === 'model_not_found' || status === 404 || (status === 400 && error === 'invalid_request')
-      why = status === null ? 'no connection' : badModel ? `${modelHint()} (${error} ${status})` : `${error} ${status}`
-      const limited = status === 429 || status === 529 || error === 'rate_limit' || error === 'overloaded'
-      passing = limited || status === null || status >= 500
-      if (limited) await backOff($)
-      else {
-        await showLimited($, false)
-        if (!passing) break
-      }
-    } else if (r.reason === 'aborted') {
-      why = 'timed out or cut off' // the 30 s limit, or the plugin reloaded mid-call
-      passing = true
-    } else {
-      why = 'empty reply'
-      passing = false
-      break
+    why = a.why
+    passing = a.passing
+    if (a.limited) await backOff($)
+    else {
+      await showLimited($, false)
+      if (!a.passing) break
     }
   }
   $.ui.log(`Lingo: translation failed (${why})`, { to: 'debug' })
@@ -244,7 +290,7 @@ async function translate($: EngineInterface, text: string, target: Language, all
   if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing } as const
   const out = a.text.trim()
   if (allowSame && out === SAME) return { status: 'same', text: '' } as const
-  const cut = a.outputTokens >= MAX_TOKENS ? ' …' : '' // stopped at the cap
+  const cut = a.cut ? ' …' : '' // stopped at the cap
   return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) + cut } as const
 }
 
