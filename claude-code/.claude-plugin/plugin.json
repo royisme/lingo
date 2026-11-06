@@ -1,6 +1,6 @@
 {
   "name": "lingo",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Learn a language while you code: shows a translation under your prompts and Claude's replies, and a live preview while you type.",
   "author": {
     "name": "Roy",

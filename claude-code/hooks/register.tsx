@@ -57,6 +57,7 @@ const GLOSS = { plugin: 'lingo', key: 'gloss' } as const
 const DRAFT = { plugin: 'lingo', key: 'draft' } as const
 const MENU = { plugin: 'lingo', key: 'menu' } as const
 const HIDDEN = { plugin: 'lingo', key: 'hidden' } as const
+const LIMITED = { plugin: 'lingo', key: 'limited' } as const
 const draft = atom(DRAFT, null)
 
 const ACCENT = 'suggestion'
@@ -68,6 +69,8 @@ const MIN_GAP_MS = 1000
 /** After a rate limit or an overload every call waits this long, doubling up to COOLDOWN_MAX_MS. */
 const COOLDOWN_MS = 5000
 const COOLDOWN_MAX_MS = 60000
+/** A call that would wait longer than this for its turn fails at once (Retry), instead of hanging. */
+const MAX_WAIT_MS = 15000
 const ATTEMPTS = 3
 /** Translations kept across sessions, so a resumed transcript is not translated again. */
 const STORED_GLOSSES = 500
@@ -77,6 +80,7 @@ const MAX_PARALLEL = 2
 
 const TEXT = {
   translating: 'Translating…',
+  waiting: 'Rate limited · waiting…',
   failed: 'Translation failed',
   retry: 'Translation failed · Retry',
   preview: 'Preview',
@@ -92,7 +96,7 @@ const ARGUMENT_HINT = [...LANGUAGES.map(l => l.code), 'off'].join(' | ')
 // Module variables: lost on a reload, which at worst runs one translation twice.
 // A gloss left `pending` with no entry here was started by a module since reloaded: it is redone.
 const inFlight = new Set<string>()
-/** Failed glosses this module has already tried again by itself (once each). */
+/** Failed glosses this module has tried itself: its own failures, and earlier loads' tried once more. */
 const autoRetried = new Set<string>()
 /** Glosses waiting for a free slot: each starts its own translation. */
 const queue: Array<() => void> = []
@@ -128,25 +132,46 @@ function modelHint(): string {
 let nextStart = 0
 let cooldown = 0
 
-/** Waits for this call's slot: MIN_GAP_MS after the last one, and past any cooldown. */
-async function waitTurn($: EngineInterface) {
+/**
+ * Waits for this call's slot: MIN_GAP_MS after the last one, and past any cooldown.
+ * Resolves 0 once it is this call's turn, or, without waiting, how long it would have to wait
+ * when that is past MAX_WAIT_MS.
+ */
+async function waitTurn($: EngineInterface): Promise<number> {
   const now = await $.clock.now()
   const at = Math.max(now, nextStart)
+  if (at - now > MAX_WAIT_MS) return at - now
   nextStart = at + MIN_GAP_MS
   if (at > now) await $.clock.sleep(at - now)
+  return 0
+}
+
+let limitedShown = false
+
+/** Whether waiting rows say "Rate limited · waiting…" rather than "Translating…". */
+async function showLimited($: EngineInterface, on: boolean) {
+  if (limitedShown === on) return
+  limitedShown = on
+  await $.state.set(LIMITED, on)
 }
 
 /** A rate limit or an overload: every call waits, longer each time until one goes through. */
 async function backOff($: EngineInterface) {
   cooldown = cooldown ? Math.min(cooldown * 2, COOLDOWN_MAX_MS) : COOLDOWN_MS
   nextStart = Math.max(nextStart, (await $.clock.now()) + cooldown)
+  await showLimited($, true)
 }
 
 async function ask($: EngineInterface, system: string, prompt: string): Promise<Asked> {
   let why = ''
   let passing = false
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-    await waitTurn($)
+    const wait = await waitTurn($)
+    if (wait) {
+      why = `rate limited; paused ${Math.ceil(wait / 1000)} s`
+      passing = true
+      break
+    }
     let r
     try {
       r = await $.model.complete({ model: settings.model, system, prompt, maxTokens: MAX_TOKENS, timeoutMs: 30000 })
@@ -157,6 +182,7 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
     }
     if (r.isAnswered) {
       cooldown = 0
+      await showLimited($, false)
       return { ok: true, text: r.text, outputTokens: r.usage.output_tokens }
     }
     if (r.reason === 'api-error') {
@@ -167,7 +193,10 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
       const limited = status === 429 || status === 529 || error === 'rate_limit' || error === 'overloaded'
       passing = limited || status === null || status >= 500
       if (limited) await backOff($)
-      else if (!passing) break
+      else {
+        await showLimited($, false)
+        if (!passing) break
+      }
     } else if (r.reason === 'aborted') {
       why = 'timed out or cut off' // the 30 s limit, or the plugin reloaded mid-call
       passing = true
@@ -249,6 +278,8 @@ async function runGloss($: EngineInterface, text: string, target: Language, id: 
     }
     await $.state.set(ref, { status: 'pending', text: '' } satisfies Gloss)
     const gloss: Gloss = await translate($, text, target, allowSame)
+    // This module has tried it now: no try by itself on the next draw (that is for earlier loads' failures).
+    if (gloss.status === 'error') autoRetried.add(id)
     await $.state.set(ref, gloss)
     keepGloss($, id, gloss)
   } finally {
@@ -328,6 +359,7 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
   // One menu per gloss, so a row whose text (and gloss) changes never shows a stale menu.
   const menuId = `${e.requestId}:${id}`
   const isOpen = (await $.state.get({ ...MENU, id: menuId })).value ?? false
+  const limited = value?.status === 'error' || value?.status === 'done' ? false : ((await $.state.get(LIMITED)).value ?? false)
 
   const { Box, Button, Text } = $.ui.resolve(e)
   const framed = e.surface !== 'terminal'
@@ -350,7 +382,7 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
         <Text dimColor>{value.why ? `${TEXT.failed} (${value.why}) · Retry` : TEXT.retry}</Text>
       </Button>
     ) : (
-      <Text dimColor>{TEXT.translating}</Text>
+      <Text dimColor>{limited ? TEXT.waiting : TEXT.translating}</Text>
     )
 
   return (
@@ -469,6 +501,7 @@ async function runPreview($: EngineInterface) {
     const gloss: Gloss = r.status === 'fix' ? { status: 'same', text: '' } : { status: r.status, text: r.text, why: r.why, passing: r.passing }
     const waited = awaitingPreview.delete(id)
     if ((gloss.status !== 'error' || waited) && !inFlight.has(id)) {
+      if (gloss.status === 'error') autoRetried.add(id)
       await $.state.set(ref, gloss)
       keepGloss($, id, gloss)
     }
@@ -569,6 +602,7 @@ export const register: Register = (on, options) => {
     const target = settings.target
     const d = await read($, draft)
     if (!target || !d || d.status === 'same' || e.props.hasSurvey) return next(e)
+    const limited = d.status === 'pending' && ((await $.state.get(LIMITED)).value ?? false)
     const polishing = d.kind === 'polish'
     if (!(polishing ? settings.polish : settings.preview)) return next(e)
     // Checking a draft written in the target stays quiet until there is something to suggest.
@@ -592,7 +626,7 @@ export const register: Register = (on, options) => {
               {d.text}
             </Text>
           ) : (
-            <Text dimColor>{TEXT.translating}</Text>
+            <Text dimColor>{limited ? TEXT.waiting : TEXT.translating}</Text>
           )}
         </Box>
         {whole !== undefined && (

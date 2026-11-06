@@ -2,6 +2,12 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.2.3] - 2026-11-06
+
+### Fixed
+- **Stuck `Translating…` under a lasting rate limit**: the 0.2.2 cooldown let rows wait minutes with no sign. Now a call that would wait over 15 s fails at once (`Translation failed (rate limited; paused N s) · Retry`), a row fails within about 15 s at most, and rows waiting on a cooldown say `Rate limited · waiting…`.
+- A row's own fresh failure no longer triggers the once-only automatic retry meant for failures from before a reload.
+
 ## [0.2.2] - 2026-11-06
 
 ### Fixed

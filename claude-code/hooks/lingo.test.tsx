@@ -950,3 +950,30 @@ test('a lasting failure is not retried by itself', async ($, on) => {
   expect(await ui.find({ key: 'lingo-retry' })).toBeDefined()
   await ui.unmount()
 })
+
+test('a lasting rate limit: rows say they wait, then fail with Retry within seconds, never hang', async ($, on) => {
+  const clock = mock.clock(on)
+  let calls = 0
+  on('model.complete', () => {
+    calls++
+    return { value: { isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit', usage: USAGE } }
+  })
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-limit'))
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /waiting|Translat/ }))?.text).toBe('Rate limited · waiting…')
+  for (let i = 0; i < 3; i++) {
+    await clock.advance(5000) // tries at 0 s, 5 s (after a 5 s cooldown) and 15 s (after 10 s)
+    await clock.settle()
+  }
+  expect(calls).toBe(3)
+  expect((await ui.find({ type: 'Text', text: /failed/ }))?.text).toBe('Translation failed (rate_limit 429) · Retry')
+
+  // Cooling down for 20 s now: a new row fails at once instead of joining the wait.
+  const late = await $.ui.mount(userRow('再看一下配置', 'desktop', 'm-limit-2'))
+  await clock.settle()
+  expect(calls).toBe(3)
+  expect((await late.find({ type: 'Text', text: /failed/ }))?.text).toMatch(/^Translation failed \(rate limited; paused \d+ s\) · Retry$/)
+  await late.unmount()
+  await ui.unmount()
+})

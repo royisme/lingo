@@ -33,6 +33,8 @@ declare module 'claude-code' {
       menu: StateFamily<boolean>
       /** Translations the person hid, by gloss id. */
       hidden: StateFamily<boolean>
+      /** Calls are cooling down after a rate limit: waiting rows say so. */
+      limited: boolean
     }
   }
 }
