@@ -42,6 +42,7 @@ Ouvrez `/config` et cherchez **Lingo** :
 | **Suggest fixes while typing** | `true` | Si votre brouillon est déjà dans la langue que vous apprenez, propose une version plus naturelle au-dessus de la zone de saisie ; **Use** la place dans la zone |
 | **Translate my prompts** | `true` | Affiche une traduction sous chaque prompt que vous envoyez |
 | **Translate Claude's replies** | `true` | Affiche une traduction sous chacune des réponses textuelles de Claude |
+| **Translation model** | `haiku` | Le modèle qui traduit : un alias ou un identifiant complet (`claude-haiku-4-5`, ou le nom du modèle de votre passerelle). Indiquez un identifiant complet si `haiku` ne vous est pas accessible |
 
 Ou changez à tout moment sans ouvrir `/config` :
 

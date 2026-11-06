@@ -800,6 +800,37 @@ test('the preview band says why it failed', async ($, on) => {
   await clock.advance(700)
   await clock.settle()
   const ui = await $.ui.mount({ ...BAND, requestId: 'band-why' })
-  expect((await ui.find({ type: 'Text', text: /failed/ }))?.text).toMatch(/^Translation failed \(refused: .+\)$/)
+  expect((await ui.find({ type: 'Text', text: /failed/ }))?.text).toMatch(/^Translation failed \(model "haiku" unavailable; set Lingo · Translation model in \/config: .+\)$/)
+  await ui.unmount()
+})
+
+test('the translation model comes from /config, and a model the account lacks says where to change it', { options: { translationModel: 'claude-haiku-4-5' } } as any, async ($, on) => {
+  const clock = mock.clock(on)
+  const models: string[] = []
+  on('model.complete', (_: any, e: any) => {
+    models.push(e.model)
+    return { value: { isAnswered: false, reason: 'api-error', status: 404, error: 'model_not_found', usage: USAGE } }
+  })
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-model'))
+  await clock.settle()
+  expect(models).toEqual(['claude-haiku-4-5'])
+  expect((await ui.find({ type: 'Text', text: /failed/ }))?.text).toBe(
+    'Translation failed (model "claude-haiku-4-5" unavailable; set Lingo · Translation model in /config (model_not_found 404)) · Retry',
+  )
+  await ui.unmount()
+})
+
+test('the translation model defaults to the haiku alias', async ($, on) => {
+  const clock = mock.clock(on)
+  const models: string[] = []
+  on('model.complete', (_: any, e: any) => {
+    models.push(e.model)
+    return { value: { isAnswered: true, text: 'Check the logs.', usage: USAGE } }
+  })
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-model-default'))
+  await clock.settle()
+  expect(models).toEqual(['haiku'])
   await ui.unmount()
 })

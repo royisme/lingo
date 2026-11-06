@@ -42,6 +42,7 @@ claude plugin install lingo --marketplace royisme/lingo
 | **Suggest fixes while typing** | `true` | 草稿已经是你在学的语言时，在输入框上方给出更自然的写法；点 **Use** 直接替换草稿 |
 | **Translate my prompts** | `true` | 在你发送的每条提问下方展示译文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每条文本回复下方展示译文 |
+| **Translation model** | `haiku` | 负责翻译的模型：别名或完整 id（如 `claude-haiku-4-5`，或网关提供的模型名）。`haiku` 在你的账号或网关上不可用时，填完整 id |
 
 你也可以随时切换，无需打开 `/config`：
 

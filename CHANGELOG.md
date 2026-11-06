@@ -6,6 +6,7 @@ All notable changes to the Lingo plugin for Claude Code are documented in this f
 
 ### Fixed
 - **Failed translations say why**: `Translation failed (rate_limit 429)`, `(no connection)`, `(timed out or cut off)`, `(refused: …)`, on the gloss line and the preview band, and in the debug log.
+- **Translation model is a setting**: new `/config` row `Lingo · Translation model` (default `haiku`). The `haiku` alias may name a version your account or gateway doesn't serve (Haiku 5.5 where only 4.5 is); set a full id such as `claude-haiku-4-5` or your gateway's model name. A failure that points at the model says so and names the row.
 - **Passing failures are retried once by themselves** (rate limit, overload, 5xx, dropped connection, a call cut off by a reload) after 1.5 s.
 
 ## [0.2.0] - 2026-11-06

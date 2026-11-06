@@ -26,6 +26,8 @@ import type { Language } from './lang'
 
 type Settings = {
   target: Language | undefined
+  /** The model that translates: an alias (`haiku`) or a full id (`claude-haiku-4-5`). */
+  model: string
   preview: boolean
   polish: boolean
   prompts: boolean
@@ -38,6 +40,7 @@ function readSettings(options: PluginOptions): Settings {
   const bool = (v: unknown) => v !== false && v !== 'false'
   return {
     target: findLanguage(String(options.targetLanguage ?? 'English')),
+    model: String(options.translationModel ?? '').trim() || 'haiku',
     preview: bool(options.previewWhileTyping),
     polish: bool(options.polishWhileTyping),
     prompts: bool(options.translatePrompts),
@@ -103,22 +106,29 @@ type Asked = { ok: true; text: string; outputTokens: number } | { ok: false; why
  * overload, a 5xx, a dropped connection, a call cut off). A failure says why in a few words,
  * drawn on the failed line and written to the debug log.
  */
+/** Points at the /config row when the model itself looks like the trouble. */
+function modelHint(): string {
+  return `model "${settings.model}" unavailable; set Lingo · Translation model in /config`
+}
+
 async function ask($: EngineInterface, system: string, prompt: string): Promise<Asked> {
   let why = ''
   for (let attempt = 0; attempt < 2; attempt++) {
     if (attempt > 0) await $.clock.sleep(RETRY_DELAY_MS)
     let r
     try {
-      r = await $.model.complete({ model: 'haiku', system, prompt, maxTokens: MAX_TOKENS, timeoutMs: 30000 })
+      r = await $.model.complete({ model: settings.model, system, prompt, maxTokens: MAX_TOKENS, timeoutMs: 30000 })
     } catch (err) {
-      // The engine would not send it (a blocked model, a setting): asking again changes nothing.
-      why = `refused: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
+      // The engine would not send it (a model not allowed, a setting): asking again changes nothing.
+      why = `${modelHint()}: ${(err instanceof Error ? err.message : String(err)).slice(0, 80)}`
       break
     }
     if (r.isAnswered) return { ok: true, text: r.text, outputTokens: r.usage.output_tokens }
     if (r.reason === 'api-error') {
       const { error, status } = r
-      why = status === null ? 'no connection' : `${error} ${status}`
+      // An alias may name a model this account or gateway does not serve (haiku 5.5 where only 4.5 is).
+      const badModel = error === 'model_not_found' || status === 404 || (status === 400 && error === 'invalid_request')
+      why = status === null ? 'no connection' : badModel ? `${modelHint()} (${error} ${status})` : `${error} ${status}`
       const passing = status === null || status === 429 || status >= 500 || error === 'rate_limit' || error === 'overloaded'
       if (!passing) break
     } else if (r.reason === 'aborted') {

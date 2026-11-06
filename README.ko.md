@@ -42,6 +42,7 @@ Terminal, Desktop, VS Code 및 Mobile에서 모두 작동합니다.
 | **Suggest fixes while typing** | `true` | 초안이 이미 배우는 언어로 쓰여 있으면 프롬프트 입력창 위에 더 자연스러운 표현을 제안합니다. **Use**를 누르면 초안을 바꿉니다 |
 | **Translate my prompts** | `true` | 전송한 각 프롬프트 아래에 번역을 표시합니다 |
 | **Translate Claude's replies** | `true` | Claude의 각 텍스트 답변 아래에 번역을 표시합니다 |
+| **Translation model** | `haiku` | 번역에 쓰는 모델: 별칭 또는 전체 ID(`claude-haiku-4-5`, 또는 게이트웨이의 모델 이름). `haiku`를 쓸 수 없는 환경이면 전체 ID를 입력합니다 |
 
 `/config`를 열지 않고도 언제든 전환할 수 있습니다:
 

@@ -42,6 +42,7 @@ Abre `/config` y busca **Lingo**:
 | **Suggest fixes while typing** | `true` | Si tu borrador ya está en el idioma que aprendes, sugiere una versión más natural sobre el cuadro de texto; **Use** la coloca en el cuadro |
 | **Translate my prompts** | `true` | Muestra una traducción debajo de cada prompt que envías |
 | **Translate Claude's replies** | `true` | Muestra una traducción debajo de cada respuesta de texto de Claude |
+| **Translation model** | `haiku` | El modelo que traduce: un alias o un id completo (`claude-haiku-4-5`, o el nombre del modelo de tu pasarela). Usa un id completo si `haiku` no está disponible para ti |
 
 O cambia en cualquier momento sin abrir `/config`:
 

@@ -123,6 +123,7 @@ Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so th
 | Lingo · Suggest fixes while typing | `lingo.polishWhileTyping` | boolean | true |
 | Lingo · Translate my prompts | `lingo.translatePrompts` | boolean | true |
 | Lingo · Translate Claude's replies | `lingo.translateReplies` | boolean | true |
+| Lingo · Translation model | `lingo.translationModel` | text | haiku |
 
 Choice values: `English, Français, Español, Deutsch, Português, 日本語, 한국어, 简体中文, 繁體中文, Русский, Tiếng Việt, Off`.
 
@@ -186,4 +187,5 @@ UI strings are English in 0.1; localizing them to the person's source language i
 | Token cap | 4096 output tokens per gloss; a gloss that hits it ends with ` …` |
 | Concurrency | At most 2 glosses translate at once; waiting ones start newest first (the rows nearest the prompt) |
 | Orphans | A gloss left `pending` by a module that reloaded mid-request is translated again when its row is drawn |
+| Model | `haiku` by default, resolved like `--model`; an alias can name a version the account or gateway lacks (Haiku 5.5 where only 4.5 is served), so the model is a `/config` row taking a full id. A failure that points at the model (`model_not_found`, 404, 400 `invalid_request`, a refusal) names the row: `model "<m>" unavailable; set Lingo · Translation model in /config` |
 | Retries | A failure that may pass (rate limit, overload, 5xx, no connection, cut off) is retried once after 1.5 s; others (an auth error, an empty reply, a refused model) are not. Each failure is written to the debug log as `Lingo: translation failed (<why>)` |

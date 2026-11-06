@@ -42,6 +42,7 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 | **Suggest fixes while typing** | `true` | 下書きがすでに学習中の言語で書かれているとき、より自然な言い方をプロンプト欄の上に提案します。**Use** で下書きを置き換えます |
 | **Translate my prompts** | `true` | 送信した各プロンプトの下に翻訳を表示します |
 | **Translate Claude's replies** | `true` | Claude の各テキスト返信の下に翻訳を表示します |
+| **Translation model** | `haiku` | 翻訳に使うモデル。エイリアスか完全な ID（`claude-haiku-4-5`、またはゲートウェイのモデル名）。`haiku` が使えない環境では完全な ID を指定します |
 
 `/config` を開かずにいつでも切り替えることもできます：
 

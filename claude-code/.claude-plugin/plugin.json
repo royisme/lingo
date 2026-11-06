@@ -65,6 +65,12 @@
       "title": "Lingo · Translate Claude's replies",
       "description": "Show a translation under Claude's text. Tool calls and code are never translated.",
       "default": true
+    },
+    "translationModel": {
+      "type": "string",
+      "title": "Lingo · Translation model",
+      "description": "The model that translates: an alias (haiku) or a full model id (claude-haiku-4-5, or your gateway's model name). Set a full id when haiku is not available to you or names a version you can't use.",
+      "default": "haiku"
     }
   }
 }

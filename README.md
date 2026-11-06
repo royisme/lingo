@@ -42,6 +42,7 @@ Open `/config` and look for **Lingo**:
 | **Suggest fixes while typing** | `true` | When your draft is already in the language you're learning, suggest a more natural version above the prompt box; **Use** puts it in the box |
 | **Translate my prompts** | `true` | Show a translation under each prompt you send |
 | **Translate Claude's replies** | `true` | Show a translation under each of Claude's text replies |
+| **Translation model** | `haiku` | The model that translates: an alias or a full id (`claude-haiku-4-5`, or your gateway's model name). Set a full id if `haiku` isn't available to you |
 
 Or switch at any time without opening `/config`:
 
