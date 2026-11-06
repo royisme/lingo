@@ -2,6 +2,20 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.1.1] - 2026-11-06
+
+### Fixed
+- **No double translation of a sent prompt**: the live preview's answer is stored as that text's gloss, so a previewed draft costs one model call, not two.
+- **Drafts already in the target language** are asked about once; pausing or moving the caret no longer re-asks the model.
+- **Stuck `Translating…`**: a gloss left pending by a module reload (e.g. a `/config` change mid-request) is translated again.
+- **Markdown in glosses**: translations are plain text; leftover `#`, `**` and backticks are stripped.
+
+### Changed
+- **Code blocks are not sent** to the model: each fenced block is replaced by a `[code]` line, cutting tokens on code-heavy replies.
+- **Token cap raised to 4096**; a gloss that hits it ends with ` …` instead of stopping silently.
+- **At most 2 glosses translate at once** (a resumed session no longer fires one request per message); waiting glosses start newest first.
+- Tag menus are keyed per gloss, not per message.
+
 ## [0.1.0] - 2026-11-06
 
 ### Added

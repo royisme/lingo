@@ -36,7 +36,7 @@ A wins because reading a sentence next to its translation is what learning needs
 | --- | --- |
 | Placement | Directly under the message, `marginTop 1`, `paddingLeft 2` (aligns with message text after the bullet) |
 | Layout | Row, `gap 1`; tag fixed, text `flexShrink 1` and wraps |
-| Text | `italic`, color `suggestion` |
+| Text | `italic`, color `suggestion`; plain text (the model is told to write no Markdown, and leftover `#`, `**`, backticks are stripped), ` …` appended when the reply hit the token cap |
 | Applies to | `UserMessage` with `origin.kind === 'composer'`; `AssistantMessage` text blocks. Never `isSummary` blocks, tool rows, tool output or code. |
 | Hidden when | Target is Off; text is already in the target language (`decide` = skip, or model answers `<<SAME>>`); the person hid this gloss; the matching setting is off. |
 
@@ -91,6 +91,8 @@ Languages are listed by their own names, never translated.
 | While re-translating | Previous text stays, dimmed |
 | Cleared | On submit, on a cleared box, when the draft becomes target-language |
 | Stale answers | Dropped if the draft changed, the target language changed, or the preview was turned off while translating |
+| Already in target | Remembered for that draft (`same`): nothing drawn, and no new request on a pause or caret move |
+| Shared with the gloss | A settled preview answer is also stored as the gloss of that text, so sending the draft costs no second request |
 | Duplicates | One request per distinct draft at a time |
 | On error | Shows `Translation failed` (no retry button here; typing again retries) |
 
@@ -155,3 +157,13 @@ UI strings are English in 0.1; localizing them to the person's source language i
 5. Same Latin script: compare common function words; clearly target: skip; clearly another language: translate; unsure: ask the model.
 6. Han target (Simplified vs Traditional): ask the model.
 7. Asked, the model answers `<<SAME>>` when the text is already in the target; nothing is shown.
+
+## 9. Cost controls
+
+| Control | Rule |
+| --- | --- |
+| One gloss per text | Keyed by target + trimmed text; the preview and the sent prompt share it |
+| Code is never sent | Fenced code blocks go to the model as a `[code]` line; inline code, paths and identifiers stay |
+| Token cap | 4096 output tokens per gloss; a gloss that hits it ends with ` …` |
+| Concurrency | At most 2 glosses translate at once; waiting ones start newest first (the rows nearest the prompt) |
+| Orphans | A gloss left `pending` by a module that reloaded mid-request is translated again when its row is drawn |

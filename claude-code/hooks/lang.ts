@@ -129,11 +129,37 @@ export function decide(text: string, target: Language): 'skip' | 'translate' | '
 /** The model's answer for a text already in the target language. */
 export const SAME = '<<SAME>>'
 
+/** What stands in for a fenced code block in the text the model is sent. */
+export const CODE = '[code]'
+
+/**
+ * The text the model is sent: fenced code blocks become a `[code]` line, since
+ * a gloss is prose and code is never translated (re-typing it only costs tokens).
+ */
+export function forModel(text: string): string {
+  return text
+    .trim()
+    .replace(/```[\s\S]*?(?:```|$)/g, `\n${CODE}\n`)
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/** A translation as a gloss draws it: plain text, no Markdown marks left over. */
+export function plain(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '$2')
+    .replace(/`([^`\n]+)`/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 export function systemPrompt(target: Language, allowSame: boolean): string {
   return [
     `You translate messages from a conversation between a software developer and a coding assistant into natural, idiomatic ${target.prompt}.`,
     'Output only the translation: no quotes, notes, or alternatives.',
-    'Keep Markdown structure, code, file paths, identifiers, commands and numbers exactly as they are.',
+    'Write plain text without Markdown formatting (no headings, bold, tables or code fences); keep one line per paragraph or list item.',
+    `Keep ${CODE} markers, code, file paths, identifiers, commands and numbers exactly as they are.`,
     allowSame
       ? `If the message is already written in ${target.prompt}, output exactly ${SAME} and nothing else.`
       : '',

@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { SAME, decide, findLanguage, prose } from './lang'
+import { CODE, SAME, decide, findLanguage, forModel, hash, plain, prose } from './lang'
 
 const USAGE = {
   input_tokens: 10,
@@ -343,3 +343,136 @@ test('draft preview drops result if prompt changed while in flight', async ($, o
   expect(await ui.find({ type: 'Text', text: /First draft translation/ })).toBeUndefined()
   await ui.unmount()
 })
+
+test('forModel sends prose with code fences folded; plain strips Markdown marks', () => {
+  const sent = forModel('看这里:\n```ts\nconst pool = createPool({ max: 10 })\n```\n然后重启')
+  expect(sent).not.toContain('createPool')
+  expect(sent).toContain(CODE)
+  expect(forModel('未闭合\n```ts\nconst a = 1')).not.toContain('const a')
+  expect(plain('## Cause\n**The pool** is full; see `getUserById`.')).toBe('Cause\nThe pool is full; see getUserById.')
+  expect(plain('a * b * c')).toBe('a * b * c')
+})
+
+test('a reply with a long code block sends only its prose to the model', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'The problem is the pool config: [code]')
+  engineRow(on)
+  const text = '问题出在连接池配置:\n```ts\n' + 'const pool = createPool({ max: 10 })\n'.repeat(50) + '```'
+  const ui = await $.ui.mount(replyRow(text))
+  await clock.settle()
+  expect(asked.length).toBe(1)
+  expect(asked[0]).not.toContain('createPool')
+  expect(asked[0].length).toBeLessThan(40)
+  await ui.unmount()
+})
+
+test('a reply that hits the token cap is marked as cut', async ($, on) => {
+  const clock = mock.clock(on)
+  on('model.complete', () => ({
+    value: { isAnswered: true, text: 'A very long translation', usage: { ...USAGE, output_tokens: 4096 } },
+  }))
+  engineRow(on)
+  const ui = await $.ui.mount(replyRow('这是一段很长的回复'))
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /very long/ }))?.text).toBe('A very long translation …')
+  await ui.unmount()
+})
+
+test('a previewed draft costs no second call once sent', async ($, on) => {
+  const clock = mock.clock(on)
+  let box = '先别改代码'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const asked = answer(on, "Don't change the code yet.")
+  engineRow(on)
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
+
+  await ($.prompt as any).change({ text: box, cursor: 5, origin: { kind: 'engine' } })
+  await clock.advance(700)
+  box = ''
+  await ($.prompt as any).submit({ text: '先别改代码 ', origin: { kind: 'composer' } })
+  await clock.settle()
+  const ui = await $.ui.mount(userRow('先别改代码', 'desktop', 'm-sent'))
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /change the code/ }))?.text).toBe("Don't change the code yet.")
+  expect(asked.length).toBe(1)
+  await ui.unmount()
+})
+
+test('a draft already in the target language is asked about once, not on every pause', async ($, on) => {
+  const clock = mock.clock(on)
+  on('prompt.read', () => ({ value: { text: 'Run lint again quickly', cursor: 3 } }))
+  const asked = answer(on, SAME)
+  engineRow(on)
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  for (let i = 0; i < 5; i++) {
+    await ($.prompt as any).change({ text: 'Run lint again quickly', cursor: i, origin: { kind: 'engine' } })
+    await clock.advance(700)
+  }
+  expect(asked.length).toBe(1)
+  const ui = await $.ui.mount({
+    plugin: 'lingo',
+    surface: 'desktop',
+    component: 'AbovePrompt',
+    requestId: 'band-same',
+    props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80 },
+  } as any)
+  expect(await ui.find({ type: 'Text', text: /Preview|Translat/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a gloss left pending by a reloaded module is translated again', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'Look into the login timeout.')
+  engineRow(on)
+  const id = hash('en\u0000帮我看一下登录超时')
+  let orphan = true
+  on('state.get', (_: any, e: any, next: any) =>
+    orphan && e.key === 'gloss' && e.id === id ? { value: { value: { status: 'pending', text: '' }, version: 1 } } : next(e),
+  )
+  on('state.set', (_: any, e: any, next: any) => {
+    if (e.key === 'gloss' && e.id === id) orphan = false
+    return next(e)
+  })
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-orphan'))
+  await clock.settle()
+  await ui.unmount()
+  expect(asked.length).toBe(1)
+  const again = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-orphan'))
+  expect((await again.find({ type: 'Text', text: /login timeout/ }))?.text).toBe('Look into the login timeout.')
+  await again.unmount()
+})
+
+test('at most two glosses translate at once; of those waiting, the newest goes first', async ($, on) => {
+  const clock = mock.clock(on)
+  const started: string[] = []
+  const finish: Array<() => void> = []
+  let live = 0
+  let peak = 0
+  on('model.complete', (_: any, e: any) => {
+    started.push(e.prompt)
+    live++
+    peak = Math.max(peak, live)
+    return new Promise(res =>
+      finish.push(() => {
+        live--
+        res({ value: { isAnswered: true, text: `T ${e.prompt}`, usage: USAGE } })
+      }),
+    )
+  })
+  engineRow(on)
+  const texts = ['第一条消息', '第二条消息', '第三条消息', '第四条消息', '第五条消息']
+  const uis = []
+  for (const [i, t] of texts.entries()) uis.push(await $.ui.mount(userRow(t, 'desktop', `m-q${i}`)))
+  await clock.settle()
+  expect(started.length).toBe(2)
+  while (finish.length) {
+    finish.shift()!()
+    await clock.settle()
+  }
+  expect(started.length).toBe(5)
+  expect(peak).toBe(2)
+  expect(started).toEqual(['第一条消息', '第二条消息', '第五条消息', '第四条消息', '第三条消息'])
+  for (const ui of uis) await ui.unmount()
+})
+
