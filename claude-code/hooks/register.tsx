@@ -42,14 +42,18 @@ const PREVIEW_DELAY_MS = 600
 const TEXT = {
   translating: 'Translating…',
   failed: 'Translation failed',
+  retry: 'Translation failed · Retry',
   preview: 'Preview',
   hide: 'Hide this translation',
   off: 'Turn off Lingo',
   settings: 'Settings…',
 }
 
+const ARGUMENT_HINT = [...LANGUAGES.map(l => l.code), 'off'].join(' | ')
+
 // Module variables: lost on a reload, which at worst runs one translation twice.
 const inFlight = new Set<string>()
+let previewInFlight: string | undefined
 let previewTimer: { cancel: () => void } | undefined
 
 function glossId(target: Language, text: string): string {
@@ -59,17 +63,21 @@ function glossId(target: Language, text: string): string {
 // ---- translation (outside any render) --------------------------------------
 
 async function translate($: EngineInterface, text: string, target: Language, allowSame: boolean) {
-  const r = await $.model.complete({
-    model: 'haiku',
-    system: systemPrompt(target, allowSame),
-    prompt: text,
-    maxTokens: 2048,
-    timeoutMs: 30000,
-  })
-  if (!r.isAnswered) return { status: 'error', text: '' } as const
-  const out = r.text.trim()
-  if (allowSame && out.includes(SAME)) return { status: 'same', text: '' } as const
-  return { status: 'done', text: out } as const
+  try {
+    const r = await $.model.complete({
+      model: 'haiku',
+      system: systemPrompt(target, allowSame),
+      prompt: text,
+      maxTokens: 2048,
+      timeoutMs: 30000,
+    })
+    if (!r.isAnswered) return { status: 'error', text: '' } as const
+    const out = r.text.trim()
+    if (allowSame && out === SAME) return { status: 'same', text: '' } as const
+    return { status: 'done', text: out } as const
+  } catch {
+    return { status: 'error', text: '' } as const
+  }
 }
 
 async function runGloss($: EngineInterface, text: string, target: Language, id: string, allowSame: boolean) {
@@ -151,7 +159,9 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
         {value.text}
       </Text>
     ) : value?.status === 'error' ? (
-      <Text dimColor>{TEXT.failed}</Text>
+      <Button key="lingo-retry" plain onPress={() => schedule($, text, target)}>
+        <Text dimColor>{TEXT.retry}</Text>
+      </Button>
     ) : (
       <Text dimColor>{TEXT.translating}</Text>
     )
@@ -216,16 +226,22 @@ async function runPreview($: EngineInterface) {
     return
   }
   const held = (await $.state.get(DRAFT)).value
-  if (held && held.src === src && held.status === 'done') return
-  await $.state.set(DRAFT, { src, status: 'pending', text: held?.text ?? '' } satisfies Draft)
-  const r = await translate($, src, target, verdict === 'ask')
-  // The person may have typed on meanwhile: keep only the answer for the newest draft.
-  if ((await $.prompt.read()).text.trim() !== src) return
-  if (r.status === 'same') {
-    await $.state.set(DRAFT, null)
-    return
+  if ((held && held.src === src && held.status === 'done') || previewInFlight === src) return
+  previewInFlight = src
+  try {
+    await $.state.set(DRAFT, { src, status: 'pending', text: held?.text ?? '' } satisfies Draft)
+    const r = await translate($, src, target, verdict === 'ask')
+    // The person may have typed on meanwhile: keep only the answer for the newest draft.
+    if ((await $.prompt.read()).text.trim() !== src) return
+    if (settings.target?.code !== target.code || !settings.preview) return
+    if (r.status === 'same') {
+      await $.state.set(DRAFT, null)
+      return
+    }
+    await $.state.set(DRAFT, { src, status: r.status, text: r.text } satisfies Draft)
+  } finally {
+    if (previewInFlight === src) previewInFlight = undefined
   }
-  await $.state.set(DRAFT, { src, status: r.status, text: r.text } satisfies Draft)
 }
 
 function queuePreview($: EngineInterface) {
@@ -237,6 +253,7 @@ function queuePreview($: EngineInterface) {
 async function clearPreview($: EngineInterface) {
   previewTimer?.cancel()
   previewTimer = undefined
+  previewInFlight = undefined
   if ((await $.state.get(DRAFT)).value) await $.state.set(DRAFT, null)
 }
 
@@ -249,7 +266,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'lingo',
       description: 'Switch the language Lingo translates into: /lingo fr, /lingo ja, /lingo off',
-      argumentHint: 'en | fr | es | de | pt | ja | ko | zh-CN | zh-TW | ru | vi | off',
+      argumentHint: ARGUMENT_HINT,
     })
     return next(e)
   })

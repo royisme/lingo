@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { SAME, decide, findLanguage } from './lang'
+import { SAME, decide, findLanguage, prose } from './lang'
 
 const USAGE = {
   input_tokens: 10,
@@ -10,6 +10,7 @@ const USAGE = {
 }
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 const EN = findLanguage('English')!
+const ES = findLanguage('es')!
 const JA = findLanguage('ja')!
 const ZH = findLanguage('zh-CN')!
 
@@ -48,14 +49,22 @@ function answer(on: any, text: string, log: string[] = []) {
 
 test('decide: scripts are told apart locally; same-script falls back to the model', () => {
   expect(decide('帮我看一下为什么登录接口会超时', EN)).toBe('translate')
+  expect(decide('帮我看一下为什么 UserAuthenticationService in the repo 会报错', EN)).toBe('translate')
   expect(decide('Why does the login endpoint time out?', EN)).toBe('skip')
   expect(decide('Pourquoi le serveur est lent avec la base de données ?', EN)).toBe('translate')
+  expect(decide('¿Por qué el servidor no responde?', ES)).toBe('skip')
+  expect(decide('¿Por qué el servidor no responde?', EN)).toBe('translate')
   expect(decide('ログインがタイムアウトする理由を調べて', ZH)).toBe('translate')
   expect(decide('帮我看一下登录超时', JA)).toBe('translate')
   expect(decide('看 `getUserById`', EN)).toBe('skip')
   expect(decide('```ts\nconst a = 1\n```', EN)).toBe('skip')
   expect(decide('Run lint again quickly', EN)).toBe('ask')
   expect(decide('请检查一下', ZH)).toBe('ask') // Simplified vs Traditional: the model decides
+
+  // R4: prose strips real paths but keeps slash words
+  expect(prose('Choose yes/no and/or true/false for input/output')).toContain('and/or')
+  expect(prose('Check file (./src/auth/login.ts) and "../config/db.json" or [src/main.rs]')).not.toContain('src/auth/login.ts')
+  expect(prose('Check file (./src/auth/login.ts) and "../config/db.json" or [src/main.rs]')).not.toContain('src/main.rs')
 })
 
 test('a Chinese prompt gets a gloss with its tag, on every surface, translated once', async ($, on) => {
@@ -207,5 +216,130 @@ test('the draft preview shows above the prompt after a pause', async ($, on) => 
   } as any)
   expect((await ui.find({ type: 'Text', text: /change the code/ }))?.text).toBe("Don't change the code yet.")
   expect((await ui.find({ type: 'Text', text: /^Preview$/ }))?.text).toBe('Preview')
+  await ui.unmount()
+})
+
+test('translation failure shows retry button and clicking it recovers on success', async ($, on) => {
+  const clock = mock.clock(on)
+  let shouldFail = true
+  let completeCount = 0
+
+  on('model.complete', () => {
+    completeCount++
+    if (shouldFail) {
+      throw new Error('Network error')
+    }
+    return { value: { isAnswered: true, text: 'Recovered translation.', usage: USAGE } }
+  })
+  engineRow(on)
+
+  const ui = await $.ui.mount(userRow('帮我看一下报错', 'desktop', 'm-fail'))
+  await clock.settle()
+
+  expect(await ui.find({ type: 'Text', text: /Translation failed/ })).toBeDefined()
+  expect(await ui.find({ key: 'lingo-retry' })).toBeDefined()
+  expect(completeCount).toBe(1)
+
+  shouldFail = false
+  await ui.press({ key: 'lingo-retry' })
+  await clock.settle()
+
+  expect(completeCount).toBe(2)
+  expect((await ui.find({ type: 'Text', text: /Recovered translation/ }))?.text).toBe('Recovered translation.')
+  expect(await ui.find({ key: 'lingo-retry' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('model isAnswered false also shows failed and can retry', async ($, on) => {
+  const clock = mock.clock(on)
+  let attempt = 0
+  on('model.complete', () => {
+    attempt++
+    if (attempt === 1) {
+      return { value: { isAnswered: false, text: '', usage: USAGE } }
+    }
+    return { value: { isAnswered: true, text: 'Second attempt succeeded.', usage: USAGE } }
+  })
+  engineRow(on)
+
+  const ui = await $.ui.mount(userRow('检查网络连接', 'desktop', 'm-unanswered'))
+  await clock.settle()
+
+  expect(await ui.find({ key: 'lingo-retry' })).toBeDefined()
+  await ui.press({ key: 'lingo-retry' })
+  await clock.settle()
+
+  expect((await ui.find({ type: 'Text', text: /Second attempt succeeded/ }))?.text).toBe('Second attempt succeeded.')
+  await ui.unmount()
+})
+
+test('text containing <<SAME>> as a substring is not treated as same', async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'Run lint again with <<SAME>> token')
+  engineRow(on)
+
+  const ui = await $.ui.mount(replyRow('Run lint again quickly'))
+  await clock.settle()
+
+  expect(asked.length).toBe(1)
+  expect((await ui.find({ type: 'Text', text: /<<SAME>>/ }))?.text).toBe('Run lint again with <<SAME>> token')
+  await ui.unmount()
+})
+
+test('runPreview does not duplicate requests when a translation for the same src is already pending', async ($, on) => {
+  const clock = mock.clock(on)
+  let calls = 0
+  let finishModel: () => void
+  on('prompt.read', () => ({ value: { text: '重复草稿', cursor: 4 } }))
+  on('model.complete', () => {
+    calls++
+    return new Promise(res => {
+      finishModel = () => res({ value: { isAnswered: true, text: 'Duplicate draft', usage: USAGE } })
+    })
+  })
+  engineRow(on)
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+
+  await ($.prompt as any).change({ text: '重复草稿', cursor: 4, origin: { kind: 'engine' } })
+  await clock.advance(700)
+
+  // Trigger change again with same text
+  await ($.prompt as any).change({ text: '重复草稿', cursor: 4, origin: { kind: 'engine' } })
+  await clock.advance(700)
+
+  expect(calls).toBe(1)
+  if (finishModel!) finishModel!()
+  await clock.settle()
+})
+
+test('draft preview drops result if prompt changed while in flight', async ($, on) => {
+  const clock = mock.clock(on)
+  let finishModel: () => void
+  let currentText = '第一版草稿'
+  on('prompt.read', () => ({ value: { text: currentText, cursor: 5 } }))
+  on('model.complete', () => new Promise(res => {
+    finishModel = () => res({ value: { isAnswered: true, text: 'First draft translation', usage: USAGE } })
+  }))
+  engineRow(on)
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+
+  await ($.prompt as any).change({ text: '第一版草稿', cursor: 5, origin: { kind: 'engine' } })
+  await clock.advance(700)
+
+  // User types something else
+  currentText = '第二版草稿'
+  await ($.prompt as any).change({ text: '第二版草稿', cursor: 5, origin: { kind: 'engine' } })
+
+  if (finishModel!) finishModel!()
+  await clock.settle()
+
+  const ui = await $.ui.mount({
+    plugin: 'lingo',
+    surface: 'desktop',
+    component: 'AbovePrompt',
+    requestId: 'band-race2',
+    props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80 },
+  } as any)
+  expect(await ui.find({ type: 'Text', text: /First draft translation/ })).toBeUndefined()
   await ui.unmount()
 })

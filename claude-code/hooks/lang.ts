@@ -45,7 +45,7 @@ export function prose(text: string): string {
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`[^`]*`/g, ' ')
     .replace(/https?:\/\/\S+/g, ' ')
-    .replace(/(?:\.{0,2}\/)?[\w.-]+\/[\w./-]+/g, ' ')
+    .replace(/(?:^|[\s([{"'])(?:\.{0,2}\/[\w./-]+|[\w.-]+\/[\w.-]+\/[\w./-]+|[\w.-]+\/[\w.-]+\.[A-Za-z0-9]{1,10})(?=\s|$|[)\]}"',.;:!?])/g, ' ')
 }
 
 function scriptCounts(text: string): Record<Script, number> {
@@ -62,7 +62,7 @@ function scriptCounts(text: string): Record<Script, number> {
 const STOPWORDS: Partial<Record<Code, readonly string[]>> = {
   en: ['the', 'and', 'is', 'are', 'to', 'of', 'in', 'it', 'that', 'this', 'with', 'for', 'you', 'can', 'not', 'what', 'why', 'how', 'do', 'be'],
   fr: ['le', 'la', 'les', 'et', 'est', 'un', 'une', 'des', 'du', 'que', 'pour', 'pas', 'dans', 'avec', 'ce', 'je', 'tu', 'vous', 'sur', 'pourquoi'],
-  es: ['el', 'la', 'los', 'las', 'y', 'es', 'un', 'una', 'que', 'de', 'para', 'por', 'con', 'no', 'en', 'del', 'se', 'por qué', 'como', 'pero'],
+  es: ['el', 'la', 'los', 'las', 'y', 'es', 'un', 'una', 'que', 'de', 'para', 'por', 'con', 'no', 'en', 'del', 'se', 'qué', 'como', 'pero'],
   de: ['der', 'die', 'das', 'und', 'ist', 'nicht', 'ein', 'eine', 'zu', 'mit', 'für', 'auf', 'ich', 'du', 'sie', 'es', 'den', 'dem', 'warum', 'wie'],
   pt: ['o', 'a', 'os', 'as', 'e', 'é', 'um', 'uma', 'que', 'de', 'para', 'com', 'não', 'em', 'do', 'da', 'por', 'se', 'porque', 'como'],
   vi: ['là', 'và', 'của', 'có', 'không', 'được', 'cho', 'một', 'này', 'với', 'các', 'những', 'tôi', 'bạn', 'để', 'trong', 'khi', 'thì', 'sao', 'gì'],
@@ -109,6 +109,9 @@ export function decide(text: string, target: Language): 'skip' | 'translate' | '
   }
   if (target.script === 'han') return 'ask' // Simplified vs Traditional: the model knows
   if (target.script !== 'latin') return 'skip'
+
+  const nonLatin = c.han + c.kana + c.hangul + c.cyrillic
+  if (nonLatin >= 4) return 'translate'
 
   // Latin vs Latin: compare function words.
   const words = p.toLowerCase().match(/[a-zÀ-ɏḀ-ỿ']+/g) ?? []
