@@ -2,6 +2,14 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.3.1] - 2026-11-07
+
+### Fixed
+- **No "rate limited" flash after switching provider**: a load (a `/config` change) clears the mark an earlier load left, and a row that failed under the earlier load is drawn as translating while it is tried again, not as the old failure.
+
+### Changed
+- READMEs recommend `gemma4:cloud` on Ollama.
+
 ## [0.3.0] - 2026-11-06
 
 ### Added

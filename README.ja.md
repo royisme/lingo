@@ -65,7 +65,7 @@ OpenAI の chat-completions API に対応したエンドポイントなら翻訳
 
 | サービス | Provider URL | Translation model（例） |
 | --- | --- | --- |
-| Ollama（ローカル、キー不要） | `http://localhost:11434/v1` | `qwen2.5:7b` |
+| Ollama（ローカル、キー不要） | `http://localhost:11434/v1` | `gemma4:cloud`（おすすめ） |
 | LM Studio（ローカル、キー不要） | `http://localhost:1234/v1` | 読み込んだモデルの名前 |
 | OpenRouter | `https://openrouter.ai/api/v1` | `:free` が付いたモデル |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |

@@ -497,13 +497,13 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
   // One menu (and one fold) per gloss, so a row whose text changes never shows a stale one.
   const menuId = `${e.requestId}:${id}`
   const shown = !settings.fold || ((await $.state.get({ ...SHOWN, id: menuId })).value ?? false)
-  const { value } = await $.state.get({ ...GLOSS, id })
-  if (shown) {
-    // A row that failed on something passing (a rate limit) is tried once more by this module, paced.
-    const retry = value?.status === 'error' && value.passing === true && !autoRetried.has(id)
-    if (retry) autoRetried.add(id)
-    if (!value || (value.status === 'pending' && !inFlight.has(id)) || retry) schedule($, text, target)
-  }
+  const kept = (await $.state.get({ ...GLOSS, id })).value
+  // A row that failed on something passing (a rate limit) under an earlier load, perhaps another
+  // provider, is tried once more by this module, and drawn as translating, not as the old failure.
+  const retry = shown && kept?.status === 'error' && kept.passing === true && !autoRetried.has(id)
+  if (retry) autoRetried.add(id)
+  if (shown && (!kept || (kept.status === 'pending' && !inFlight.has(id)) || retry)) schedule($, text, target)
+  const value = retry ? undefined : kept
   // Already in the target: nothing to offer, unless the person opened it (then it says so).
   if (value?.status === 'same' && !(settings.fold && shown)) return row
   if ((await $.state.get({ ...HIDDEN, id })).value) return row
@@ -716,6 +716,9 @@ export const register: Register = (on, options) => {
   settings = readSettings(options)
 
   on('session.start', async ($, e, next) => {
+    // A reload (a /config change, such as switching the provider) starts the pacing over; a
+    // "rate limited" mark left by the code before it would show on rows this code never limited.
+    await $.state.set(LIMITED, false)
     await $.command.register({
       name: 'lingo',
       description: 'Translate the latest reply (/lingo show) or switch the language: /lingo fr, /lingo ja, /lingo off',

@@ -65,7 +65,7 @@ Lingo 可以用任何支持 OpenAI chat-completions 接口的服务来翻译：�
 
 | 服务 | Provider URL | Translation model（示例） |
 | --- | --- | --- |
-| Ollama（本地，无需 key） | `http://localhost:11434/v1` | `qwen2.5:7b` |
+| Ollama（本地，无需 key） | `http://localhost:11434/v1` | `gemma4:cloud`（推荐） |
 | LM Studio（本地，无需 key） | `http://localhost:1234/v1` | 已加载模型的名字 |
 | OpenRouter | `https://openrouter.ai/api/v1` | 带 `:free` 后缀的模型 |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |

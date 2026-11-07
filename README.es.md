@@ -65,7 +65,7 @@ Lingo puede traducir con cualquier servicio que hable la API chat-completions de
 
 | Servicio | Provider URL | Translation model (ejemplo) |
 | --- | --- | --- |
-| Ollama (local, sin clave) | `http://localhost:11434/v1` | `qwen2.5:7b` |
+| Ollama (local, sin clave) | `http://localhost:11434/v1` | `gemma4:cloud` (recomendado) |
 | LM Studio (local, sin clave) | `http://localhost:1234/v1` | el nombre del modelo cargado |
 | OpenRouter | `https://openrouter.ai/api/v1` | un modelo `:free` |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |

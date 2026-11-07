@@ -1,6 +1,6 @@
 {
   "name": "lingo",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Learn a language while you code: shows a translation under your prompts and Claude's replies, and a live preview while you type. Translates with Claude or any OpenAI-compatible model (Ollama, OpenRouter, ...).",
   "author": {
     "name": "Roy",
@@ -85,7 +85,7 @@
     "translationModel": {
       "type": "string",
       "title": "Lingo · Translation model",
-      "description": "The model that translates. With Claude: an alias (haiku) or a full id (claude-haiku-4-5). With an OpenAI-compatible provider: its model name (qwen2.5:7b for Ollama).",
+      "description": "The model that translates. With Claude: an alias (haiku) or a full id (claude-haiku-4-5). With an OpenAI-compatible provider: its model name (gemma4:cloud is a good pick on Ollama).",
       "default": "haiku"
     },
     "providerBaseUrl": {

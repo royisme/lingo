@@ -1192,3 +1192,41 @@ test('/lingo show translates the latest reply, for a terminal whose rows cannot 
   expect((await ui.find({ type: 'Text', text: /connection pool/ }))?.text).toBe('The problem is in the connection pool.')
   await ui.unmount()
 })
+
+test('a load clears the "rate limited" mark an earlier load left (switching provider)', async ($, on) => {
+  mock.clock(on)
+  const sets: Array<[string, unknown]> = []
+  on('state.set', (_: any, e: any, next: any) => {
+    sets.push([e.key, e.value])
+    return next(e)
+  })
+  on('command.register', () => ({ value: { command: 'lingo' } }))
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true } as any)
+  expect(sets).toContainEqual(['limited', false])
+})
+
+test('a row an earlier load left failed is drawn as translating while it is tried again, not as the old failure', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  let finish: () => void = () => {}
+  on('model.complete', () => new Promise(res => (finish = () => res({ value: { isAnswered: true, text: 'Check the logs.', usage: USAGE } }))))
+  engineRow(on)
+  const id = hash('en\u0000看一下日志')
+  let stale = true
+  on('state.get', (_: any, e: any, next: any) =>
+    stale && e.key === 'gloss' && e.id === id
+      ? { value: { value: { status: 'error', text: '', why: 'rate_limit 429', passing: true }, version: 1 } }
+      : next(e),
+  )
+  on('state.set', (_: any, e: any, next: any) => {
+    if (e.key === 'gloss' && e.id === id) stale = false
+    return next(e)
+  })
+  const ui = await $.ui.mount(userRow('看一下日志', 'desktop', 'm-stale'))
+  expect(await ui.find({ type: 'Text', text: /failed|rate_limit/ })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: /Translating/ }))?.text).toBe('Translating…')
+  await clock.settle()
+  finish()
+  await clock.settle()
+  await ui.unmount()
+})

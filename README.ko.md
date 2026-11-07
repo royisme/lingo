@@ -65,7 +65,7 @@ OpenAI chat-completions API를 지원하는 엔드포인트라면 번역에 쓸 
 
 | 서비스 | Provider URL | Translation model (예) |
 | --- | --- | --- |
-| Ollama (로컬, 키 불필요) | `http://localhost:11434/v1` | `qwen2.5:7b` |
+| Ollama (로컬, 키 불필요) | `http://localhost:11434/v1` | `gemma4:cloud` (추천) |
 | LM Studio (로컬, 키 불필요) | `http://localhost:1234/v1` | 불러온 모델의 이름 |
 | OpenRouter | `https://openrouter.ai/api/v1` | `:free`가 붙은 모델 |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |

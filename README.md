@@ -65,7 +65,7 @@ Lingo can translate with any endpoint that speaks the OpenAI chat-completions AP
 
 | Provider | Provider URL | Translation model (example) |
 | --- | --- | --- |
-| Ollama (local, no key) | `http://localhost:11434/v1` | `qwen2.5:7b` |
+| Ollama (local, no key) | `http://localhost:11434/v1` | `gemma4:cloud` (recommended) |
 | LM Studio (local, no key) | `http://localhost:1234/v1` | the loaded model's name |
 | OpenRouter | `https://openrouter.ai/api/v1` | a `:free` model |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
