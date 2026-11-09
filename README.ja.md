@@ -44,6 +44,7 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 | **Translate my prompts** | `true` | 送信した各プロンプトの下に翻訳を表示します |
 | **Translate Claude's replies** | `true` | Claude の各テキスト返信の下に翻訳を表示します |
 | **Fold translations** | `true` | 訳文は `▸ Translate` として折りたたまれた状態で始まり、開くまで翻訳も課金もされません。オフにすると、プロンプトは送信時に翻訳し、返信は1ターンにつき1回（最後の返信）だけ翻訳します |
+| **Save words as flashcards** | `true` | プレビューの下に並ぶキーワードを、その下書きを送信したとき（または **Use** を押したとき）に単語カードとして保存し、`/lingo review` で復習できます。オフにしても保存が止まるだけです |
 | **Provider** | `Claude` | `Claude`（Claude Code 経由、あなたのアカウント）または `OpenAI-compatible`（下記参照） |
 | **Provider URL** | `http://localhost:11434/v1` | `OpenAI-compatible` のとき：`/v1` で終わる API のベース URL |
 | **Provider API key** | 空 | `OpenAI-compatible` のとき：サービスの API キー（ローカルの Ollama は不要）。`settings.json` に平文で保存されます |
@@ -55,6 +56,10 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 - **失敗時の再試行**：翻訳に失敗した場合は `Translation failed · Retry` をクリックすると再試行します。
 - **`/lingo` コマンドを実行**：`/lingo fr`、`/lingo ja`、`/lingo zh-TW`、`/lingo off`。
 - **折りたたまれた訳文を開く**：メッセージの下の `▸ Translate` をクリック。行をクリックできないターミナルでは `/lingo show` で最新の返信を翻訳します。開いた訳文をクリックすると再び折りたたみます。
+
+## 単語カード
+
+プレビューの下に並ぶキーワードは、その下書きを送信したとき、または **Use** を押したときに、目標言語ごとのデッキへ保存されます。モデルへの追加呼び出しはなく、破棄した下書きは保存されません。`/lingo review` で復習パネルを開きます：`s` で意味を表示、`1`〜`4` で評価（Again、Hard、Good、Easy）、`x` で削除、Esc で閉じます。間隔は SM-2 方式で決まります（Good を続けると 2、5、13、33 日）。`/lingo words` でデッキの状況、`/lingo forget <word>` でカードの削除ができます。
 
 ## スキップされる内容
 

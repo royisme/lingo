@@ -139,11 +139,14 @@ export function rate(card: Card, g: Grade, now: number): Card {
   } else if (g === 2) {
     ivl = Math.max(ivl + 1, Math.round(ivl * 1.2))
     ease -= 0.15
-  } else if (g === 3) {
-    ivl = Math.max(ivl + 1, Math.round(ivl * ease))
   } else {
-    ivl = Math.max(ivl + 1, Math.round(ivl * ease * 1.3))
-    ease += 0.15
+    const good = Math.max(ivl + 1, Math.round(ivl * ease))
+    if (g === 3) ivl = good
+    else {
+      // at least a day past Good, which a short interval would otherwise round to
+      ivl = Math.max(good + 1, Math.round(ivl * ease * 1.3))
+      ease += 0.15
+    }
   }
   ivl = Math.min(ivl, MAX_IVL)
   ease = Math.max(MIN_EASE, round2(ease))

@@ -2,6 +2,14 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.5.0] - 2026-11-09
+
+### Added
+- **Vocabulary flashcards** (0.4.4 to 0.4.7): the key words of a translation preview are saved when you send or use that draft, with no extra model call; `/lingo review` opens a pane that schedules them with SM-2 style spacing; `/lingo words` and `/lingo forget <word>` manage the deck; the `Save words as flashcards` row in `/config` turns saving off. See the README.
+
+### Fixed
+- In the review pane, Easy is always at least a day past Good; at short intervals both once gave the same day.
+
 ## [0.4.7] - 2026-11-09
 
 ### Added

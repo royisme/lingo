@@ -44,6 +44,7 @@ Abre `/config` y busca **Lingo**:
 | **Translate my prompts** | `true` | Muestra una traducción debajo de cada prompt que envías |
 | **Translate Claude's replies** | `true` | Muestra una traducción debajo de cada respuesta de texto de Claude |
 | **Fold translations** | `true` | Cada traducción empieza plegada como `▸ Translate`: no se traduce ni se cobra nada hasta que la abres. Desactívalo para traducir los prompts al enviarlos y las respuestas una vez por turno (la respuesta final) |
+| **Save words as flashcards** | `true` | Guarda las palabras clave listadas bajo una vista previa, al enviar ese borrador (o pulsar **Use**), como tarjetas para `/lingo review`. Desactivarlo solo detiene el guardado |
 | **Provider** | `Claude` | `Claude` (a través de Claude Code, tu cuenta) u `OpenAI-compatible` (ver abajo) |
 | **Provider URL** | `http://localhost:11434/v1` | Con `OpenAI-compatible`: la base de la API, terminada en `/v1` |
 | **Provider API key** | vacío | Con `OpenAI-compatible`: la clave del servicio (ninguna para Ollama en local). Se guarda en texto plano en `settings.json` |
@@ -55,6 +56,10 @@ O cambia en cualquier momento sin abrir `/config`:
 - **Haz clic en una línea fallida** (`Translation failed · Retry`) para reintentar la traducción.
 - **Ejecuta `/lingo`**: `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
 - **Abrir una traducción plegada**: haz clic en `▸ Translate` bajo un mensaje, o ejecuta `/lingo show` para la última respuesta (en un terminal donde las filas no se pueden pulsar). Haz clic en una traducción abierta para plegarla de nuevo.
+
+## Tarjetas de estudio
+
+Las palabras clave listadas bajo una vista previa se guardan en un mazo (uno por idioma de destino) al enviar ese borrador o pulsar **Use**. No hay ninguna llamada extra al modelo, y no se guarda nada de los borradores abandonados. `/lingo review` abre un panel de repaso: `s` muestra la nota, `1` a `4` puntúan la tarjeta (Again, Hard, Good, Easy), `x` la elimina, Esc cierra el panel. Los intervalos siguen un método tipo SM-2 (Good una y otra vez da 2, 5, 13, 33 días). `/lingo words` resume el mazo; `/lingo forget <word>` elimina una tarjeta.
 
 ## Qué se omite
 

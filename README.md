@@ -44,6 +44,7 @@ Open `/config` and look for **Lingo**:
 | **Translate my prompts** | `true` | Show a translation under each prompt you send |
 | **Translate Claude's replies** | `true` | Show a translation under each of Claude's text replies |
 | **Fold translations** | `true` | Each translation starts folded as `▸ Translate`: nothing is translated, or paid for, until you open it. Turn off to translate prompts as they are sent and replies once per turn (the final reply) |
+| **Save words as flashcards** | `true` | Save the key words listed under a preview when you send that draft (or press **Use**), as flashcards for `/lingo review`. Turning it off only stops saving |
 | **Provider** | `Claude` | `Claude` (through Claude Code, your account) or `OpenAI-compatible` (see below) |
 | **Provider URL** | `http://localhost:11434/v1` | With `OpenAI-compatible`: the API base, ending in `/v1` |
 | **Provider API key** | empty | With `OpenAI-compatible`: the provider's key (none for a local Ollama). Stored in plain text in `settings.json` |
@@ -55,6 +56,10 @@ Or switch at any time without opening `/config`:
 - **Click a failed line** (`Translation failed · Retry`) to retry the translation.
 - **Run `/lingo`**: `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
 - **Open a folded translation**: click `▸ Translate` under a message, or run `/lingo show` for the latest reply (in a terminal where rows can't be clicked). Click an open translation to fold it again.
+
+## Flashcards
+
+The key words listed under a preview are saved to a deck (one per target language) when you send that draft or press **Use**. No extra model call, and nothing is saved for abandoned drafts. Run `/lingo review` to open a review pane: `s` shows the note, `1` to `4` grade the card (Again, Hard, Good, Easy), `x` removes it, Esc closes the pane. Cards are scheduled with an SM-2 style spacing (Good again and again gives 2, 5, 13, 33 days). `/lingo words` reports the deck; `/lingo forget <word>` removes a card.
 
 ## What gets skipped
 

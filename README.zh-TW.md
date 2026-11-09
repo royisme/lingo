@@ -44,6 +44,7 @@ claude plugin install lingo --marketplace royisme/lingo
 | **Translate my prompts** | `true` | 在你發送的每則提問下方顯示譯文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每則文字回覆下方顯示譯文 |
 | **Fold translations** | `true` | 每則譯文預設摺疊為 `▸ Translate`，點開之前不翻譯、也不產生費用。關閉則提示詞在送出時自動翻譯，回覆每輪只翻譯一次（最後一則回覆） |
+| **Save words as flashcards** | `true` | 把預覽下方列出的關鍵詞，在你送出該草稿（或按 **Use**）時存為單字卡，供 `/lingo review` 複習。關閉只會停止儲存 |
 | **Provider** | `Claude` | `Claude`（經由 Claude Code，用你的帳號）或 `OpenAI-compatible`（見下文） |
 | **Provider URL** | `http://localhost:11434/v1` | 選 `OpenAI-compatible` 時：API 位址，以 `/v1` 結尾 |
 | **Provider API key** | 空 | 選 `OpenAI-compatible` 時：服務的 API key（本機 Ollama 不需要）。以明文儲存在 `settings.json` |
@@ -55,6 +56,10 @@ claude plugin install lingo --marketplace royisme/lingo
 - **點擊失敗重試**：若翻譯失敗，點擊 `Translation failed · Retry` 即可重新翻譯。
 - **執行 `/lingo` 指令**：例如 `/lingo fr`、`/lingo ja`、`/lingo zh-TW`、`/lingo off`。
 - **展開摺疊的譯文**：點訊息下方的 `▸ Translate`；終端機裡點不了時，執行 `/lingo show` 翻譯最近一則回覆。點已展開的譯文可以再摺疊。
+
+## 單字卡
+
+預覽下方列出的關鍵詞，會在你送出該草稿或按 **Use** 時存入字庫（每種目標語言一個），不會額外呼叫模型，放棄的草稿也不會儲存。執行 `/lingo review` 開啟複習面板：`s` 顯示解釋，`1` 到 `4` 評分（Again、Hard、Good、Easy），`x` 刪除，Esc 關閉。間隔採 SM-2 方式安排（連續選 Good 依序為 2、5、13、33 天）。`/lingo words` 查看字庫概況，`/lingo forget <word>` 刪除某張卡片。
 
 ## 自動略過的內容
 

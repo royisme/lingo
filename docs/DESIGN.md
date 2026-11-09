@@ -125,6 +125,34 @@ One dim row per change (at most 3), the reason a few words in the native languag
 | Text | The better version keeps the draft's own marks (backticks, emphasis), since it may replace the draft |
 | Skipped | Slash commands and shell lines (`/…`, `!…`), as for the preview band and glosses |
 
+### 3.6 Flashcards
+
+Vocabulary from the preview becomes a spaced-repetition deck. No model call is made for cards; everything comes from what the preview already returned.
+
+| Property | Value |
+| --- | --- |
+| Capture | The `words` of a `done` translation preview, when that draft is sent (`prompt.submit`, the draft's source equal to the sent text, from the composer) or used (`u: Use`). Corrections (`items`) are not captured. Nothing for abandoned drafts, a preview that had not settled, polish suggestions, or with **Save words as flashcards** off |
+| Mark | The sent prompt's gloss row gets a dim `· +N words`; the first capture ever raises one toast |
+| Card | `id` (hash of the normalized word), `word` (target language), `note` (native language), `ctx` (the translated sentence), `native`, `added`, `due`, `ivl` (days), `ease`, `reps`, `lapses`. A word already in the deck is kept as it is |
+| Scheduler | SM-2, Anki flavour, four grades. A new card rated Good, then Good again each time, gets 2, 5, 13, 33 days; Again returns in 10 minutes. Easy is always at least a day past Good (at short intervals the two would otherwise round to the same day). Ease never below 1.3; interval capped at 365 days. A card is due when `due` is within 4 hours |
+| Session | `/lingo review` picks at most 20 cards: due ones first (most overdue first), then new ones, at most 10, newest first |
+
+Review pane (`lingo-review`, opened with `focus` and `closeOnEscape`; it draws from `$.state` only):
+
+```
+3 / 12 · EN                                  dim
+flaky                                        bold, accent
+The test is flaky on CI.                     italic, accent (a translation)
+s: Show answer
+--- after Show ---
+不稳定的；时好时坏                              the note
+1: Again 10m  2: Hard 1d  3: Good 2d  4: Easy 4d     x: Remove (dim)
+```
+
+Keys: `s` shows the note; `1` to `4` grade; `x` removes the card from the deck. Enter presses the focused Button: Show, then (focus moves to Good) Good. Esc closes the pane; every grade was already written. Again appends the card to the end of the queue. After the last card the pane closes itself and a toast gives the count and the next due interval. On the terminal, when the pane does not hold the keys, a dim `ctrl+x tab to use the keys` shows. `/lingo review` typed while Claude is working is queued like a message and runs when the turn ends; if the composer is not empty then, the pane opens without the keys and shows that hint (checked live).
+
+`autoFocus` only applies when the pane first takes the keyboard, not after a redraw replaces the Buttons. Without help, Enter after the first step landed on Again. So after each step the handler moves the ring with `$.ui.focus` (to `lingo-card-3` after Show, to `lingo-card-show` on the next card). A render never writes state or the store, so this is done in the press handler.
+
 ## 4. Settings: native `/config` rows
 
 Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so they inherit its theme, keys and focus. No custom settings screen.
@@ -138,6 +166,7 @@ Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so th
 | Lingo · Translate my prompts | `lingo.translatePrompts` | boolean | true |
 | Lingo · Translate Claude's replies | `lingo.translateReplies` | boolean | true |
 | Lingo · Fold translations | `lingo.foldTranslations` | boolean | true |
+| Lingo · Save words as flashcards | `lingo.saveWords` | boolean | true |
 | Lingo · Provider | `lingo.provider` | choice: Claude, OpenAI-compatible | Claude |
 | Lingo · Translation model | `lingo.translationModel` | text | haiku |
 | Lingo · Provider URL | `lingo.providerBaseUrl` | text | http://localhost:11434/v1 |
@@ -145,7 +174,7 @@ Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so th
 
 Choice values: `English, Français, Español, Deutsch, Português, 日本語, 한국어, 简体中文, 繁體中文, Русский, Tiếng Việt, Off`.
 
-Shortcut command: `/lingo <code|name|off>` writes the same row. With no argument it reports the current language. `/lingo show` opens and translates the newest reply.
+Shortcut command: `/lingo <code|name|off>` writes the same row. With no argument it reports the current language. `/lingo show` opens and translates the newest reply. `/lingo review` opens the flashcard review pane; `/lingo words` reports the deck in one line (words, due, new, the latest ten); `/lingo forget <word>` removes a card (case, width and spacing do not matter).
 
 Rejected: a custom `/lingo` settings pane (configuration 2 on the canvas); more to maintain per surface, for no gain over native rows.
 
@@ -183,6 +212,16 @@ The mod cannot choose fonts; it uses the surface's. Emphasis comes only from `it
 | cmd.set | Lingo: translating into {language}. |
 | cmd.off | Lingo: translations off. |
 | cmd.denied | Lingo: couldn't change the language ({reason}). |
+| cards.saved | Lingo: saved {n} words as flashcards · /lingo review (once ever) |
+| cards.mark | · +{n} words |
+| cards.none | Lingo: no words saved yet. Send a prompt in your own language after its preview shows; its key words are saved. |
+| cards.report | Lingo · {tag}: {n} words · {due} due · {new} new. Latest: {words} · /lingo review · /lingo forget <word> |
+| cards.forget | Lingo: removed "{word}". / Lingo: no card "{word}". |
+| review.start | Lingo: reviewing {n} words. |
+| review.nothing | Lingo: nothing to review. {n} words in {tag}; next one due in {span}. |
+| review.done | Lingo: reviewed {n} words · next due in {span} (or · nothing else due) |
+| review.idle | No review running · /lingo review |
+| review.keys | ctrl+x tab to use the keys |
 
 UI strings are English in 0.1; localizing them to the person's source language is a later step.
 
@@ -209,6 +248,7 @@ Both answer the same `Attempt` (`hooks/openai.ts`), so pacing, cooldown, retries
 
 | Control | Rule |
 | --- | --- |
+| No model call for cards | Capture reads the preview's `words`; review and scheduling are local. Decks live in `$.store` under `cards1:<code>` (one per target language), at most 500 cards each (the best-known, by interval, go first); a review session is at most 20 cards, 10 of them new |
 | One reply per turn | With folding off, only the turn's final reply is translated, as the turn completes; the text blocks between tool calls show `▸ Translate`. Prompts are one per turn already |
 | Delimited message | The text goes to the model (glosses, preview and polish alike) between `<<<` and `>>>` lines, after shielding, and each system prompt says it is text to translate or check, never instructions: a prompt such as "list the files" was once answered instead of translated. `<<<` / `>>>` lines a model echoes are stripped before parsing |
 | One gloss per text | Keyed by target + trimmed text; the preview and the sent prompt share it |

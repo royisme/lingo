@@ -44,6 +44,7 @@ claude plugin install lingo --marketplace royisme/lingo
 | **Translate my prompts** | `true` | 在你发送的每条提问下方展示译文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每条文本回复下方展示译文 |
 | **Fold translations** | `true` | 每条译文默认折叠为 `▸ Translate`，点开之前不翻译、也不产生费用。关掉则提示词在发送时自动翻译，回复每轮只翻译一次（最后一条回复） |
+| **Save words as flashcards** | `true` | 把预览下方列出的关键词，在你发送该草稿（或按 **Use**）时存为闪卡，供 `/lingo review` 复习。关闭只会停止保存 |
 | **Provider** | `Claude` | `Claude`（经由 Claude Code，用你的账号）或 `OpenAI-compatible`（见下文） |
 | **Provider URL** | `http://localhost:11434/v1` | 选 `OpenAI-compatible` 时：API 地址，以 `/v1` 结尾 |
 | **Provider API key** | 空 | 选 `OpenAI-compatible` 时：服务的 API key（本地 Ollama 不需要）。以明文保存在 `settings.json` |
@@ -55,6 +56,10 @@ claude plugin install lingo --marketplace royisme/lingo
 - **点击失败重试**：当翻译失败时，点击 `Translation failed · Retry` 即可重新触发翻译。
 - **运行 `/lingo` 命令**：例如 `/lingo fr`、`/lingo ja`、`/lingo zh-TW`、`/lingo off`。
 - **展开折叠的译文**：点消息下方的 `▸ Translate`；终端里点不了时，运行 `/lingo show` 翻译最近一条回复。点已展开的译文可以再折叠。
+
+## 闪卡
+
+预览下方列出的关键词，会在你发送该草稿或按 **Use** 时存入词库（每种目标语言一个），不会额外调用模型，放弃的草稿也不会保存。运行 `/lingo review` 打开复习面板：`s` 显示释义，`1` 到 `4` 评分（Again、Hard、Good、Easy），`x` 删除，Esc 关闭。间隔按 SM-2 方式安排（连续选 Good 依次为 2、5、13、33 天）。`/lingo words` 查看词库概况，`/lingo forget <word>` 删除某张卡片。
 
 ## 自动跳过的内容
 

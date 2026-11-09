@@ -44,6 +44,7 @@ Ouvrez `/config` et cherchez **Lingo** :
 | **Translate my prompts** | `true` | Affiche une traduction sous chaque prompt que vous envoyez |
 | **Translate Claude's replies** | `true` | Affiche une traduction sous chacune des réponses textuelles de Claude |
 | **Fold translations** | `true` | Chaque traduction commence repliée en `▸ Translate` : rien n'est traduit, ni facturé, tant que vous ne l'ouvrez pas. Désactivez pour traduire les prompts à l'envoi et les réponses une fois par tour (la réponse finale) |
+| **Save words as flashcards** | `true` | Enregistre les mots clés listés sous un aperçu, quand vous envoyez ce brouillon (ou appuyez sur **Use**), comme cartes pour `/lingo review`. La désactivation arrête seulement l'enregistrement |
 | **Provider** | `Claude` | `Claude` (via Claude Code, votre compte) ou `OpenAI-compatible` (voir plus bas) |
 | **Provider URL** | `http://localhost:11434/v1` | Avec `OpenAI-compatible` : la base de l'API, terminée par `/v1` |
 | **Provider API key** | vide | Avec `OpenAI-compatible` : la clé du service (aucune pour Ollama en local). Enregistrée en clair dans `settings.json` |
@@ -55,6 +56,10 @@ Ou changez à tout moment sans ouvrir `/config` :
 - **Cliquez sur une ligne en échec** (`Translation failed · Retry`) pour relancer la traduction.
 - **Exécutez `/lingo`** : `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
 - **Ouvrir une traduction repliée** : cliquez sur `▸ Translate` sous un message, ou lancez `/lingo show` pour la dernière réponse (dans un terminal où les lignes ne sont pas cliquables). Cliquez sur une traduction ouverte pour la replier.
+
+## Cartes mémoire
+
+Les mots clés listés sous un aperçu sont enregistrés dans un paquet (un par langue cible) quand vous envoyez ce brouillon ou appuyez sur **Use**. Aucun appel supplémentaire au modèle, et rien n'est enregistré pour un brouillon abandonné. `/lingo review` ouvre un panneau de révision : `s` affiche la note, `1` à `4` notent la carte (Again, Hard, Good, Easy), `x` la supprime, Échap ferme le panneau. Les intervalles suivent une méthode de type SM-2 (Good à répétition donne 2, 5, 13, 33 jours). `/lingo words` résume le paquet ; `/lingo forget <word>` supprime une carte.
 
 ## Ce qui est ignoré
 

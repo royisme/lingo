@@ -44,6 +44,7 @@ Terminal, Desktop, VS Code 및 Mobile에서 모두 작동합니다.
 | **Translate my prompts** | `true` | 전송한 각 프롬프트 아래에 번역을 표시합니다 |
 | **Translate Claude's replies** | `true` | Claude의 각 텍스트 답변 아래에 번역을 표시합니다 |
 | **Fold translations** | `true` | 번역은 `▸ Translate`로 접힌 채 시작하며, 펼치기 전에는 번역도 과금도 되지 않습니다. 끄면 프롬프트는 보낼 때 번역하고, 답변은 턴마다 한 번(마지막 답변)만 번역합니다 |
+| **Save words as flashcards** | `true` | 미리보기 아래에 나열된 핵심 단어를 해당 초안을 전송하거나 **Use**를 누를 때 플래시카드로 저장하며, `/lingo review`로 복습합니다. 끄면 저장만 중단됩니다 |
 | **Provider** | `Claude` | `Claude`(Claude Code를 통해, 내 계정으로) 또는 `OpenAI-compatible`(아래 참고) |
 | **Provider URL** | `http://localhost:11434/v1` | `OpenAI-compatible`일 때: `/v1`로 끝나는 API 기본 주소 |
 | **Provider API key** | 비어 있음 | `OpenAI-compatible`일 때: 서비스의 API 키(로컬 Ollama는 불필요). `settings.json`에 평문으로 저장됩니다 |
@@ -55,6 +56,10 @@ Terminal, Desktop, VS Code 및 Mobile에서 모두 작동합니다.
 - **실패 시 재시도**: 번역에 실패한 줄(`Translation failed · Retry`)을 클릭하면 다시 번역을 시도합니다.
 - **`/lingo` 명령어 실행**: `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
 - **접힌 번역 펼치기**: 메시지 아래 `▸ Translate`를 클릭하세요. 행을 클릭할 수 없는 터미널에서는 `/lingo show`로 최신 답변을 번역합니다. 펼친 번역을 클릭하면 다시 접힙니다.
+
+## 플래시카드
+
+미리보기 아래에 나열된 핵심 단어는 그 초안을 전송하거나 **Use**를 누를 때 목표 언어별 덱에 저장됩니다. 모델을 추가로 호출하지 않으며, 버린 초안은 저장되지 않습니다. `/lingo review`로 복습 패널을 엽니다: `s`는 뜻 보기, `1`~`4`는 평가(Again, Hard, Good, Easy), `x`는 삭제, Esc는 닫기입니다. 간격은 SM-2 방식으로 정해집니다(Good을 계속 누르면 2, 5, 13, 33일). `/lingo words`는 덱 현황을, `/lingo forget <word>`는 카드 삭제를 맡습니다.
 
 ## 건너뛰는 항목
 

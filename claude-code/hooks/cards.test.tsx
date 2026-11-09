@@ -63,6 +63,16 @@ test('rate: Hard and Easy at ivl 5', () => {
   expect(easy.due).toBe(NOW + 16 * DAY)
 })
 
+test('rate: Easy always lands past Good, even where a short interval rounds them together', () => {
+  for (const ivl of [1, 2, 3]) {
+    for (const ease of [1.3, 2.5]) {
+      const c = card({ ivl, ease, reps: 2 })
+      expect(rate(c, 4, NOW).ivl).toBeGreaterThan(rate(c, 3, NOW).ivl)
+    }
+  }
+  expect(rate(card({ ivl: 1, reps: 1 }), 4, NOW).ivl).toBe(4) // Good gives 3
+})
+
 test('rate: Again at ivl 13 relearns in 10 minutes, then Good gives 2 days', () => {
   const c = card({ ivl: 13, reps: 3 })
   const lost = rate(c, 1, NOW)
