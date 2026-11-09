@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.4.2] - 2026-11-09
+
+### Fixed
+- **Broken translations cached before 0.4.1 are no longer reused**: when the model took the text as instructions, its own reasoning was kept as the translation and shown again in later sessions. The cache now uses new keys (`g2:`, `gloss-index-2`), so old entries are never read, and the old entries are deleted once at session start (best effort).
+
 ## [0.4.1] - 2026-11-09
 
 ### Changed

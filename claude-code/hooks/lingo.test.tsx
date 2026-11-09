@@ -1008,7 +1008,7 @@ test('a translation kept from an earlier session is reused: no call', AUTO, asyn
   const clock = mock.clock(on)
   const asked = answer(on, 'x')
   const id = hash('en\u0000帮我看一下登录超时')
-  on('store.get', (_: any, e: any) => ({ value: e.key === `g:${id}` ? { status: 'done', text: 'Look into the login timeout.' } : undefined }))
+  on('store.get', (_: any, e: any) => ({ value: e.key === `g2:${id}` ? { status: 'done', text: 'Look into the login timeout.' } : undefined }))
   engineRow(on)
   const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-kept'))
   await clock.settle()
@@ -1035,8 +1035,41 @@ test('a settled translation is kept for later sessions, with an index of the new
   await clock.settle()
   await ui.unmount()
   const id = hash('en\u0000帮我看一下登录超时')
-  expect(store.get(`g:${id}`)).toEqual({ status: 'done', text: 'Look into the login timeout.' })
-  expect(store.get('gloss-index')).toEqual([id])
+  expect(store.get(`g2:${id}`)).toEqual({ status: 'done', text: 'Look into the login timeout.' })
+  expect(store.get('gloss-index-2')).toEqual([id])
+})
+
+test('a translation kept under the old cache key (before 0.4.1) is not reused', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const asked = answer(on, 'Look into the login timeout.')
+  const id = hash('en\u0000帮我看一下登录超时')
+  on('store.get', (_: any, e: any) => ({ value: e.key === `g:${id}` ? { status: 'done', text: 'The user wants me to look into a timeout, so I should' } : undefined }))
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-old'))
+  await clock.settle()
+  expect(asked.length).toBe(1)
+  expect((await ui.find({ type: 'Text', text: /login timeout/ }))?.text).toBe('Look into the login timeout.')
+  await ui.unmount()
+})
+
+test('session.start deletes the old cache entries and the old index', async ($, on) => {
+  const clock = mock.clock(on)
+  const store = new Map<string, unknown>([
+    ['gloss-index', ['a', 'b']],
+    ['g:a', { status: 'done', text: 'x' }],
+    ['g:b', { status: 'done', text: 'y' }],
+    ['g2:c', { status: 'done', text: 'z' }],
+  ])
+  on('store.get', (_: any, e: any) => ({ value: store.get(e.key) }))
+  on('store.delete', (_: any, e: any) => {
+    store.delete(e.key)
+    return { value: undefined }
+  })
+  on('command.register', () => ({ value: { command: 'lingo' } }))
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true } as any)
+  await clock.settle()
+  expect([...store.keys()]).toEqual(['g2:c'])
 })
 
 test('a draft too short to be worth it gets no preview', AUTO, async ($, on) => {

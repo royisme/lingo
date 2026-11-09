@@ -106,7 +106,11 @@ const MAX_WAIT_MS = 15000
 const ATTEMPTS = 3
 /** Translations kept across sessions, so a resumed transcript is not translated again. */
 const STORED_GLOSSES = 500
-const STORE_INDEX = 'gloss-index'
+/** Cache version 2: translations cached before 0.4.1 may hold the model's reasoning, so the old `g:` keys are never read. */
+const GLOSS_KEY = 'g2:'
+const STORE_INDEX = 'gloss-index-2'
+const OLD_GLOSS_KEY = 'g:'
+const OLD_STORE_INDEX = 'gloss-index'
 /** Glosses translated at once; the rest wait (a resumed session draws its whole history). */
 const MAX_PARALLEL = 2
 
@@ -356,10 +360,22 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
 /** A settled translation from an earlier session, if one was kept. */
 async function storedGloss($: EngineInterface, id: string): Promise<Gloss | undefined> {
   try {
-    const v = (await $.store.get(`g:${id}`)) as Gloss | undefined
+    const v = (await $.store.get(`${GLOSS_KEY}${id}`)) as Gloss | undefined
     return v && (v.status === 'done' || v.status === 'same') ? { status: v.status, text: String(v.text ?? '') } : undefined
   } catch {
     return undefined
+  }
+}
+
+/** Once, best effort: frees the space of the version 1 cache (its entries and index); every error is ignored. */
+async function dropOldGlosses($: EngineInterface) {
+  try {
+    const index = (await $.store.get(OLD_STORE_INDEX)) as string[] | undefined
+    if (!Array.isArray(index)) return
+    for (const id of index) await $.store.delete(`${OLD_GLOSS_KEY}${id}`)
+    await $.store.delete(OLD_STORE_INDEX)
+  } catch {
+    // a failing store only leaves the old entries where they are
   }
 }
 
@@ -372,8 +388,8 @@ function keepGloss($: EngineInterface, id: string, gloss: Gloss) {
     .then(async () => {
       const index = ((await $.store.get(STORE_INDEX)) as string[] | undefined) ?? []
       const next = [...index.filter(k => k !== id), id]
-      await $.store.set(`g:${id}`, { status: gloss.status, text: gloss.text })
-      for (const old of next.splice(0, Math.max(0, next.length - STORED_GLOSSES))) await $.store.delete(`g:${old}`)
+      await $.store.set(`${GLOSS_KEY}${id}`, { status: gloss.status, text: gloss.text })
+      for (const old of next.splice(0, Math.max(0, next.length - STORED_GLOSSES))) await $.store.delete(`${GLOSS_KEY}${old}`)
       await $.store.set(STORE_INDEX, next)
     })
     .catch(() => undefined) // a full or failing store only costs a translation later
@@ -815,6 +831,7 @@ export const register: Register = (on, options) => {
       description: 'Translate the latest reply (/lingo show) or switch the language: /lingo fr, /lingo ja, /lingo off',
       argumentHint: ARGUMENT_HINT,
     })
+    void dropOldGlosses($)
     return next(e)
   })
 
