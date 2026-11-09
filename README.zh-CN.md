@@ -38,8 +38,9 @@ claude plugin install lingo --marketplace royisme/lingo
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
 | **Target language** | `English` | `English`、`Français`、`Español`、`Deutsch`、`Português`、`日本語`、`한국어`、`简体中文`、`繁體中文`、`Русский`、`Tiếng Việt` 或 `Off` |
-| **Preview while typing** | `true` | 输入停顿片刻后，在输入框上方实时展示草稿译文 |
-| **Suggest fixes while typing** | `true` | 草稿已经是你在学的语言时，在输入框上方给出更自然的写法；点 **Use** 直接替换草稿 |
+| **Native language** | `简体中文` | 你的母语：讲解和词语注释用它来写。选项同 Target language，但没有 `Off` |
+| **Preview while typing** | `true` | 输入停顿片刻后，在输入框上方实时展示草稿译文，并用母语讲解 |
+| **Suggest fixes while typing** | `true` | 草稿已经是你在学的语言时，在输入框上方给出更自然的写法；点 **Use** 直接替换草稿，并用母语讲解 |
 | **Translate my prompts** | `true` | 在你发送的每条提问下方展示译文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每条文本回复下方展示译文 |
 | **Fold translations** | `true` | 每条译文默认折叠为 `▸ Translate`，点开之前不翻译、也不产生费用。关掉则每条消息出现时自动翻译 |

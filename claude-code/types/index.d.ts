@@ -20,6 +20,10 @@ export type Draft = {
   kind?: 'translate' | 'polish'
   /** With `fix`: the whole better version for the prompt box, its code, commands and mentions as written. Absent when they could not all be kept: no Use then. */
   fix?: string
+  /** With `fix`: up to 3 changes, each with a short reason in the native language. */
+  items?: { wrong: string; right: string; reason: string }[]
+  /** With `done`: up to 5 words of the translation worth learning, each with a short note in the native language. */
+  words?: { word: string; note: string }[]
   /** With `error`: why, in a few words. */
   why?: string
 }

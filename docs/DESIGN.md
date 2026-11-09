@@ -85,7 +85,12 @@ Languages are listed by their own names, never translated.
 
 ```
 [TAG] Preview  Italic translation of the draft
+      dim: word — note · word — note
 ```
+
+Below the translation, one dim row joins up to 5 key words or phrases with a short note in the native language (`Lingo · Native language`). The band takes at most `maxRows` rows: detail rows are dropped from the end, the first row never.
+
+The model answers JSON only: `{"mode":"translate","text":"…","words":[{"word":"…","note":"…"}]}`; in `ask` mode (same script, unsure) also `{"mode":"same"}`. `parseFeedback` (`hooks/lang.ts`) is tolerant: it strips ```json fences, takes the outermost `{…}`, drops malformed entries and caps words at 5. A reply that is not such JSON is handled as plain text as before (`<<SAME>>`, else the text is the translation, with no words row), since small local models do not always follow JSON instructions. The preview has its own prompt and call (`previewPrompt`); glosses under sent messages keep the plain `systemPrompt`, and the preview writes only its translation text into the gloss cache.
 
 | Property | Value |
 | --- | --- |
@@ -104,12 +109,15 @@ Languages are listed by their own names, never translated.
 
 ```
 [TAG] Better  Italic better version of the draft   Use
+      dim: "wrong" → "right"  reason
 ```
+
+One dim row per change (at most 3), the reason a few words in the native language; rows are dropped from the end to fit `maxRows`, the first row never. The model answers JSON only: `{"mode":"same"}`, or `{"mode":"fix","text":"<whole corrected draft>","items":[{"wrong":"…","right":"…","reason":"…"}]}`; for a same-script draft of unknown language (`either`) also `{"mode":"translate","text":"…","words":[…]}` as in 3.4. `text`, `wrong` and `right` are shown with markers restored for display; Use still uses `unshieldExact` on `text`. A reply that is not valid JSON falls back to the plain-text answer (`<<SAME>>`, `<<FIX>> text`, or a translation in `either` mode), with no detail rows.
 
 | Property | Value |
 | --- | --- |
 | Trigger | The same typing pause as the preview band, when the draft is already in the target language (`classify` = target), or the model, asked about a same-script draft, answers with `<<FIX>>` |
-| Shown when | Suggestions are on and the model returned a better version (`<<FIX>> …`); a natural draft (`<<SAME>>`) shows nothing |
+| Shown when | Suggestions are on and the model returned a better version (`fix`, or plain `<<FIX>> …`); a natural draft (`same` / `<<SAME>>`) shows nothing |
 | While checking | Nothing (no `Translating…`); while re-checking after an edit, the previous suggestion stays, dimmed |
 | On error | Nothing: a failed suggestion is not worth a line |
 | Use | A plain `Button` (`key="lingo-use"`, hotkey `u`; in the terminal the band takes the keyboard with ctrl+x tab): writes the better version into the prompt box (`$.prompt.fill`), with every kept piece (code, commands, skills, mentions, URLs) put back exactly as written. Not offered unless each `⟦n⟧` marker came back exactly once, nor when the draft holds a pasted-text or image chip. The used text is not checked again. |
@@ -123,6 +131,7 @@ Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so th
 | Row label | Key | Kind | Default |
 | --- | --- | --- | --- |
 | Lingo · Target language | `lingo.targetLanguage` | choice | English |
+| Lingo · Native language | `lingo.nativeLanguage` | choice (the languages, without Off) | 简体中文 |
 | Lingo · Preview while typing | `lingo.previewWhileTyping` | boolean | true |
 | Lingo · Suggest fixes while typing | `lingo.polishWhileTyping` | boolean | true |
 | Lingo · Translate my prompts | `lingo.translatePrompts` | boolean | true |

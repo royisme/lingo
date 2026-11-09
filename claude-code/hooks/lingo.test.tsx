@@ -11,6 +11,7 @@ import {
   hash,
   isCommand,
   looksLikeCode,
+  parseFeedback,
   plain,
   prose,
   shield,
@@ -649,6 +650,130 @@ test('a draft in the target language gets a better version, and Use puts it in t
   await clock.advance(1600)
   expect(systems.length).toBe(1)
   await ui.unmount()
+})
+
+test('parseFeedback: fix, translate, same, fences, fallback and caps', () => {
+  expect(
+    parseFeedback('{"mode":"fix","text":"Why does it fail?","items":[{"wrong":"is fail","right":"fail","reason":"主谓"}]}'),
+  ).toEqual({ mode: 'fix', text: 'Why does it fail?', items: [{ wrong: 'is fail', right: 'fail', reason: '主谓' }] })
+  expect(parseFeedback('{"mode":"translate","text":"Hello","words":[{"word":"Hello","note":"你好"}]}')).toEqual({
+    mode: 'translate',
+    text: 'Hello',
+    words: [{ word: 'Hello', note: '你好' }],
+  })
+  expect(parseFeedback('{"mode":"same"}')).toEqual({ mode: 'same' })
+  expect(parseFeedback('```json\n{"mode":"same"}\n```')).toEqual({ mode: 'same' })
+  expect(parseFeedback('Here you go: {"mode":"translate","text":"Hi","words":[]} done')).toEqual({ mode: 'translate', text: 'Hi', words: [] })
+  // Not JSON, or not the expected shape: the caller falls back to plain text.
+  expect(parseFeedback('<<SAME>>')).toBeUndefined()
+  expect(parseFeedback(`${FIX} Fixed text`)).toBeUndefined()
+  expect(parseFeedback('Just a translation')).toBeUndefined()
+  expect(parseFeedback('{"mode":"fix"}')).toBeUndefined()
+  expect(parseFeedback('{"mode":"other","text":"x"}')).toBeUndefined()
+  expect(parseFeedback('{broken')).toBeUndefined()
+  // Malformed entries are dropped; lists are capped.
+  const items = Array.from({ length: 5 }, (_, i) => ({ wrong: `w${i}`, right: `r${i}`, reason: 'x' }))
+  const f = parseFeedback(JSON.stringify({ mode: 'fix', text: 'T', items: [{ wrong: 1 }, ...items] }))
+  expect(f && f.mode === 'fix' && f.items.map(i => i.wrong)).toEqual(['w0', 'w1', 'w2'])
+  const words = Array.from({ length: 8 }, (_, i) => ({ word: `a${i}`, note: 'n' }))
+  const t = parseFeedback(JSON.stringify({ mode: 'translate', text: 'T', words: [{ note: 'no word' }, ...words] }))
+  expect(t && t.mode === 'translate' && t.words.length).toBe(5)
+})
+
+test('a fix answered as JSON shows the corrected text and the item rows, and Use fills it', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  let box = 'Please help me check why login api is timeout'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const reply = {
+    mode: 'fix',
+    text: 'Please help me check why the login API times out.',
+    items: [
+      { wrong: 'login api', right: 'the login API', reason: '加冠词' },
+      { wrong: 'is timeout', right: 'times out', reason: '动词形式' },
+    ],
+  }
+  on('model.complete', () => ({ value: { isAnswered: true, text: JSON.stringify(reply), usage: USAGE } }))
+  const fills: string[] = []
+  on('prompt.fill', (_: any, e: any) => {
+    fills.push(e.text)
+    box = e.text
+    return { isFilled: true }
+  })
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  const ui = await $.ui.mount(BAND)
+  expect((await ui.find({ type: 'Text', text: /^Better$/ }))?.text).toBe('Better')
+  expect((await ui.find({ type: 'Text', text: /times out\.$/ }))?.text).toBe(reply.text)
+  expect((await ui.find({ type: 'Text', text: /"login api" → "the login API"/ }))?.text).toBe('"login api" → "the login API"  加冠词')
+  expect((await ui.find({ type: 'Text', text: /"is timeout" → "times out"/ }))?.text).toBe('"is timeout" → "times out"  动词形式')
+  await ui.press({ key: 'lingo-use' })
+  await clock.settle()
+  expect(fills).toEqual([reply.text])
+  await ui.unmount()
+})
+
+test('the band keeps its first row and drops detail rows past maxRows', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const box = 'Please help me check why login api is timeout'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const items = ['a', 'b', 'c'].map(x => ({ wrong: `w${x}`, right: `r${x}`, reason: 'x' }))
+  on('model.complete', () => ({ value: { isAnswered: true, text: JSON.stringify({ mode: 'fix', text: 'Fixed text here.', items }), usage: USAGE } }))
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, maxRows: 2 } })
+  expect(await ui.find({ type: 'Text', text: /Fixed text here/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /"wa"/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /"wb"/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a draft in another language answered as JSON shows the translation and a words row', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const box = '帮我看一下为什么登录接口会超时'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const reply = {
+    mode: 'translate',
+    text: 'Help me check why the login endpoint times out.',
+    words: [
+      { word: 'endpoint', note: '接口' },
+      { word: 'times out', note: '超时' },
+    ],
+  }
+  on('model.complete', () => ({ value: { isAnswered: true, text: '```json\n' + JSON.stringify(reply) + '\n```', usage: USAGE } }))
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  const ui = await $.ui.mount(BAND)
+  expect((await ui.find({ type: 'Text', text: /^Preview$/ }))?.text).toBe('Preview')
+  expect((await ui.find({ type: 'Text', text: /login endpoint/ }))?.text).toBe(reply.text)
+  expect((await ui.find({ type: 'Text', text: /endpoint — 接口/ }))?.text).toBe('endpoint — 接口 · times out — 超时')
+  await ui.unmount()
+})
+
+test('the preview prompt names the native language', { options: { foldTranslations: false, nativeLanguage: '日本語' } } as any, async ($, on) => {
+  const clock = mock.clock(on)
+  const box = '帮我看一下为什么登录接口会超时'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const systems: string[] = []
+  on('model.complete', (_: any, e: any) => {
+    systems.push(e.system)
+    return { value: { isAnswered: true, text: '{"mode":"translate","text":"Hi there friend","words":[]}', usage: USAGE } }
+  })
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  expect(systems.length).toBe(1)
+  expect(systems[0]).toContain('native language is Japanese')
 })
 
 test('a natural draft shows nothing, not even while it is checked', AUTO, async ($, on) => {

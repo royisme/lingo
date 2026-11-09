@@ -38,8 +38,9 @@ Ouvrez `/config` et cherchez **Lingo** :
 | Paramètre | Défaut | Description |
 | --- | --- | --- |
 | **Target language** | `English` | `English`, `Français`, `Español`, `Deutsch`, `Português`, `日本語`, `한국어`, `简体中文`, `繁體中文`, `Русский`, `Tiếng Việt` ou `Off` |
-| **Preview while typing** | `true` | Affiche une traduction en direct au-dessus de la zone de saisie après une brève pause |
-| **Suggest fixes while typing** | `true` | Si votre brouillon est déjà dans la langue que vous apprenez, propose une version plus naturelle au-dessus de la zone de saisie ; **Use** la place dans la zone |
+| **Native language** | `简体中文` | Votre langue maternelle : les explications et les notes de vocabulaire sont rédigées dans cette langue. Mêmes options que Target language, sans `Off` |
+| **Preview while typing** | `true` | Affiche une traduction en direct au-dessus de la zone de saisie après une brève pause; explications dans votre langue maternelle |
+| **Suggest fixes while typing** | `true` | Si votre brouillon est déjà dans la langue que vous apprenez, propose une version plus naturelle au-dessus de la zone de saisie ; **Use** la place dans la zone; explications dans votre langue maternelle |
 | **Translate my prompts** | `true` | Affiche une traduction sous chaque prompt que vous envoyez |
 | **Translate Claude's replies** | `true` | Affiche une traduction sous chacune des réponses textuelles de Claude |
 | **Fold translations** | `true` | Chaque traduction commence repliée en `▸ Translate` : rien n'est traduit, ni facturé, tant que vous ne l'ouvrez pas. Désactivez pour traduire chaque message dès qu'il apparaît |

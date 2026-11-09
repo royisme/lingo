@@ -14,15 +14,17 @@ import {
   hash,
   isCommand,
   looksLikeCode,
+  parseFeedback,
   plain,
   polishPrompt,
+  previewPrompt,
   shield,
   systemPrompt,
   unshieldExact,
   unshieldForDisplay,
   worthPreview,
 } from './lang'
-import type { Language } from './lang'
+import type { Item, Language, Word } from './lang'
 import { chatRequest, hostOf, readChat } from './openai'
 import type { Attempt } from './openai'
 
@@ -30,6 +32,8 @@ import type { Attempt } from './openai'
 
 type Settings = {
   target: Language | undefined
+  /** The person's own language: explanations and word notes are written in it. */
+  native: Language
   /** Who translates: Claude through Claude Code, or any OpenAI-compatible endpoint (Ollama, OpenRouter, ...). */
   provider: 'claude' | 'openai'
   /** The model that translates: an alias (`haiku`), a full id, or the provider's model name (`qwen2.5:7b`). */
@@ -45,6 +49,7 @@ type Settings = {
   replies: boolean
 }
 
+const NATIVE_DEFAULT = findLanguage('简体中文')!
 const CONFIG_KEY = 'lingo.targetLanguage'
 const OPENAI_COMPATIBLE = 'OpenAI-compatible'
 const OLLAMA_URL = 'http://localhost:11434/v1'
@@ -54,6 +59,7 @@ function readSettings(options: PluginOptions): Settings {
   const bool = (v: unknown) => v !== false && v !== 'false'
   return {
     target: findLanguage(String(options.targetLanguage ?? 'English')),
+    native: findLanguage(String(options.nativeLanguage ?? '')) ?? NATIVE_DEFAULT,
     provider: String(options.provider ?? '') === OPENAI_COMPATIBLE ? 'openai' : 'claude',
     model: String(options.translationModel ?? '').trim() || 'haiku',
     baseUrl: String(options.providerBaseUrl ?? '').trim() || OLLAMA_URL,
@@ -381,21 +387,68 @@ async function translate($: EngineInterface, text: string, target: Language, all
   return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) + cut } as const
 }
 
-/** A draft the developer wrote in the target language: SAME, or a better version (FIX). */
-async function polish($: EngineInterface, text: string, target: Language, mayTranslate: boolean) {
+/** What the preview asks for a draft: the translation or the polish, and the learning detail with it. */
+type PreviewResult =
+  | { status: 'done' | 'fix' | 'same'; text: string; fix?: string; items?: Item[]; words?: Word[] }
+  | { status: 'error'; text: string; why: string; passing: boolean }
+
+/** A translation of a draft with a few words worth learning; falls back to plain text when the reply is not JSON. */
+async function previewTranslate($: EngineInterface, text: string, target: Language, allowSame: boolean): Promise<PreviewResult> {
   const sent = shield(text)
-  const a = await ask($, polishPrompt(target, mayTranslate), sent.text)
-  if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing } as const
+  const a = await ask($, previewPrompt(target, settings.native, allowSame), sent.text)
+  if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing }
   const out = a.text.trim()
-  if (out === SAME) return { status: 'same', text: '' } as const
-  const marked = out.startsWith(FIX)
-  if (!marked && mayTranslate) return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) } as const
+  const cut = a.cut ? ' …' : '' // stopped at the cap
+  const f = parseFeedback(out)
+  if (!f) {
+    if (allowSame && out === SAME) return { status: 'same', text: '' }
+    return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) + cut }
+  }
+  if (f.mode === 'same' && allowSame) return { status: 'same', text: '' }
+  if (f.mode !== 'translate') return { status: 'error', text: '', why: 'unexpected reply', passing: false }
+  return {
+    status: 'done',
+    text: plain(unshieldForDisplay(f.text, sent.kept)) + cut,
+    words: f.words.map(w => ({ word: unshieldForDisplay(w.word, sent.kept), note: w.note })),
+  }
+}
+
+/** A draft the developer wrote in the target language: same, or a better version (fix) with its changes explained. */
+async function polish($: EngineInterface, text: string, target: Language, mayTranslate: boolean): Promise<PreviewResult> {
+  const sent = shield(text)
+  const a = await ask($, polishPrompt(target, settings.native, mayTranslate), sent.text)
+  if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing }
+  const out = a.text.trim()
+  const f = parseFeedback(out)
+  let fixed: string
+  let items: Item[] | undefined
+  if (f) {
+    if (f.mode === 'same') return { status: 'same', text: '' }
+    if (f.mode === 'translate') {
+      if (!mayTranslate) return { status: 'same', text: '' }
+      return {
+        status: 'done',
+        text: plain(unshieldForDisplay(f.text, sent.kept)),
+        words: f.words.map(w => ({ word: unshieldForDisplay(w.word, sent.kept), note: w.note })),
+      }
+    }
+    fixed = f.text
+    items = f.items.map(i => ({
+      wrong: unshieldForDisplay(i.wrong, sent.kept),
+      right: unshieldForDisplay(i.right, sent.kept),
+      reason: i.reason,
+    }))
+  } else {
+    if (out === SAME) return { status: 'same', text: '' }
+    const marked = out.startsWith(FIX)
+    if (!marked && mayTranslate) return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) }
+    fixed = (marked ? out.slice(FIX.length) : out).trim()
+  }
   // A fix keeps the draft's own marks (backticks, emphasis): it may replace the draft.
-  const fixed = (marked ? out.slice(FIX.length) : out).trim()
-  if (!fixed || fixed === sent.text) return { status: 'same', text: '' } as const
+  if (!fixed || fixed === sent.text) return { status: 'same', text: '' }
   // Use is offered only when every command, mention and code block comes back as written.
   const whole = hasChip(text) ? undefined : unshieldExact(fixed, sent.kept)
-  return { status: 'fix' as const, text: unshieldForDisplay(fixed, sent.kept), fix: whole }
+  return { status: 'fix', text: unshieldForDisplay(fixed, sent.kept), fix: whole, items }
 }
 
 async function runGloss($: EngineInterface, text: string, target: Language, id: string, allowSame: boolean) {
@@ -653,16 +706,21 @@ async function runPreview($: EngineInterface) {
       kind: shown ? held.kind : kind,
     } satisfies Draft)
     previewGloss = id
-    let r: { status: 'done' | 'fix' | 'same' | 'error'; text: string; fix?: string; why?: string; passing?: boolean }
+    let r: PreviewResult
     try {
-      r = kind === 'translate' ? await translate($, src, target, mode === 'ask') : await polish($, src, target, mayTranslate)
+      r = kind === 'translate' ? await previewTranslate($, src, target, mode === 'ask') : await polish($, src, target, mayTranslate)
     } finally {
       if (previewGloss === id) previewGloss = undefined
     }
     // Settled answers go to the gloss too, so sending this draft costs no second call;
     // an error goes there only when the sent prompt was waiting on it (it shows Retry).
     // A fix means the draft is in the target: its gloss is `same`.
-    const gloss: Gloss = r.status === 'fix' ? { status: 'same', text: '' } : { status: r.status, text: r.text, why: r.why, passing: r.passing }
+    const gloss: Gloss =
+      r.status === 'fix'
+        ? { status: 'same', text: '' }
+        : r.status === 'error'
+          ? { status: 'error', text: '', why: r.why, passing: r.passing }
+          : { status: r.status, text: r.text }
     const waited = awaitingPreview.delete(id)
     if ((gloss.status !== 'error' || waited) && !inFlight.has(id)) {
       if (gloss.status === 'error') autoRetried.add(id)
@@ -675,7 +733,13 @@ async function runPreview($: EngineInterface) {
     // An unsure draft may turn out to be another language while only the polish is on.
     if (r.status === 'done' && !settings.preview) r = { status: 'same', text: '' }
     const answerKind = r.status === 'done' ? 'translate' : r.status === 'fix' ? 'polish' : kind
-    await $.state.set(DRAFT, { src, status: r.status, text: r.text, kind: answerKind, fix: r.fix, why: r.why } satisfies Draft)
+    await $.state.set(DRAFT, {
+      src,
+      status: r.status,
+      text: r.text,
+      kind: answerKind,
+      ...(r.status === 'error' ? { why: r.why } : { fix: r.fix, items: r.items, words: r.words }),
+    } satisfies Draft)
   } finally {
     if (previewInFlight === src) previewInFlight = undefined
   }
@@ -789,7 +853,18 @@ export const register: Register = (on, options) => {
 
     const { Box, Button, Text } = $.ui.resolve(e)
     const whole = polishing && d.status === 'fix' ? d.fix : undefined
-    return (
+    // Detail rows under the first, dim: what was wrong for a fix, the words to learn for a translation.
+    const details: string[] = []
+    if (d.status === 'fix' || d.status === 'done' || d.status === 'pending') {
+      if (polishing) {
+        for (const i of d.items ?? []) details.push(`"${i.wrong}" → "${i.right}"${i.reason ? `  ${i.reason}` : ''}`)
+      } else if (d.words?.length) {
+        details.push(d.words.map(w => (w.note ? `${w.word} — ${w.note}` : w.word)).join(' · '))
+      }
+    }
+    // The first row always stays; the others fit what the band may take, the last ones dropped.
+    const rows = details.slice(0, Math.max(0, e.props.maxRows - 1))
+    const first = (
       <Box flexDirection="row" gap={1}>
         <Text color={ACCENT} bold size="caption">
           {target.tag}
@@ -813,6 +888,17 @@ export const register: Register = (on, options) => {
             {TEXT.use}
           </Button>
         )}
+      </Box>
+    )
+    if (rows.length === 0) return first
+    return (
+      <Box flexDirection="column">
+        {first}
+        {rows.map((line, i) => (
+          <Text key={`lingo-detail-${i}`} dimColor wrap="truncate-end">
+            {line}
+          </Text>
+        ))}
       </Box>
     )
   })

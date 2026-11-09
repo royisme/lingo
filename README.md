@@ -38,8 +38,9 @@ Open `/config` and look for **Lingo**:
 | Setting | Default | What it does |
 | --- | --- | --- |
 | **Target language** | `English` | `English`, `Français`, `Español`, `Deutsch`, `Português`, `日本語`, `한국어`, `简体中文`, `繁體中文`, `Русский`, `Tiếng Việt`, or `Off` |
-| **Preview while typing** | `true` | Show a live translation above the prompt box after a brief pause |
-| **Suggest fixes while typing** | `true` | When your draft is already in the language you're learning, suggest a more natural version above the prompt box; **Use** puts it in the box |
+| **Native language** | `简体中文` | Your own language: explanations and word notes are written in it. Same options as Target language, without `Off` |
+| **Preview while typing** | `true` | Show a live translation above the prompt box after a brief pause; explained in your native language |
+| **Suggest fixes while typing** | `true` | When your draft is already in the language you're learning, suggest a more natural version above the prompt box; **Use** puts it in the box; explained in your native language |
 | **Translate my prompts** | `true` | Show a translation under each prompt you send |
 | **Translate Claude's replies** | `true` | Show a translation under each of Claude's text replies |
 | **Fold translations** | `true` | Each translation starts folded as `▸ Translate`: nothing is translated, or paid for, until you open it. Turn off to translate every message as it appears |

@@ -38,8 +38,9 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 | 設定項目 | デフォルト | 説明 |
 | --- | --- | --- |
 | **Target language** | `English` | `English`、`Français`、`Español`、`Deutsch`、`Português`、`日本語`、`한국어`、`简体中文`、`繁體中文`、`Русский`、`Tiếng Việt`、または `Off` |
-| **Preview while typing** | `true` | 入力中に少し手を止めると、プロンプト欄の上にリアルタイム翻訳を表示します |
-| **Suggest fixes while typing** | `true` | 下書きがすでに学習中の言語で書かれているとき、より自然な言い方をプロンプト欄の上に提案します。**Use** で下書きを置き換えます |
+| **Native language** | `简体中文` | あなたの母語：解説や単語メモはこの言語で書かれます。選択肢は Target language と同じ（`Off` なし） |
+| **Preview while typing** | `true` | 入力中に少し手を止めると、プロンプト欄の上にリアルタイム翻訳を表示します。解説は母語で表示します |
+| **Suggest fixes while typing** | `true` | 下書きがすでに学習中の言語で書かれているとき、より自然な言い方をプロンプト欄の上に提案します。**Use** で下書きを置き換えます。解説は母語で表示します |
 | **Translate my prompts** | `true` | 送信した各プロンプトの下に翻訳を表示します |
 | **Translate Claude's replies** | `true` | Claude の各テキスト返信の下に翻訳を表示します |
 | **Fold translations** | `true` | 訳文は `▸ Translate` として折りたたまれた状態で始まり、開くまで翻訳も課金もされません。オフにすると、メッセージが表示されるたびに翻訳します |

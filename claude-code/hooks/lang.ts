@@ -260,24 +260,110 @@ export function systemPrompt(target: Language, allowSame: boolean): string {
     .join(' ')
 }
 
+const JSON_ONLY = 'Respond with ONLY the JSON object: no Markdown, no code fences, no text before or after it.'
+const NOTES_SHORT = 'Keep every note and reason very short (a few words) to save output.'
+
 /**
- * For a draft the developer writes in the language they are learning: SAME when it is
- * natural, else FIX and a better version. `mayTranslate`: the draft may not be in the
- * target at all (same script, unsure); then the answer is a plain translation.
+ * For the live preview of a draft in another language: a translation with a few words worth
+ * learning, as JSON. `allowSame`: the draft may already be in the target (same script, unsure).
+ * Notes are written in the person's native language.
  */
-export function polishPrompt(target: Language, mayTranslate: boolean): string {
+export function previewPrompt(target: Language, native: Language, allowSame: boolean): string {
   return [
-    `You help a software developer who is learning ${target.prompt} write messages to a coding assistant.`,
-    mayTranslate
-      ? `If the message is not written in ${target.prompt}, output only its translation into natural, idiomatic ${target.prompt}. If it is written in ${target.prompt}:`
-      : `The message is written in ${target.prompt}.`,
-    `if it is already correct and natural, output exactly ${SAME} and nothing else;`,
-    `otherwise output ${FIX} followed by the corrected, natural version, keeping the meaning, tone and register.`,
-    'Change only what is wrong or clearly unnatural; do not rephrase what is fine.',
-    'Write plain text without Markdown formatting and without explanations.',
+    `You help a software developer who is learning ${target.prompt} write messages to a coding assistant. Their native language is ${native.prompt}.`,
+    `Translate the message into natural, idiomatic ${target.prompt}.`,
+    allowSame ? `If the message is already written in ${target.prompt}, answer {"mode":"same"}.` : '',
+    `Otherwise answer {"mode":"translate","text":"<the translation>","words":[{"word":"<word or phrase from the translation>","note":"<note>"}]}.`,
+    `"words": at most 5 key words or phrases from the translation that are worth learning; each "note" is a very short meaning or usage note written in ${native.prompt}.`,
+    'Write the translation as plain text without Markdown formatting (no headings, bold, tables or code fences); keep one line per paragraph or list item.',
     MARKERS,
     'Keep file paths, identifiers, slash commands (/name), @mentions and numbers exactly as they are.',
+    NOTES_SHORT,
+    JSON_ONLY,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+/**
+ * For a draft the developer writes in the language they are learning: `{"mode":"same"}` when it
+ * is natural, else a corrected version with up to 3 short explained changes in the native
+ * language. `mayTranslate`: the draft may not be in the target at all (same script, unsure);
+ * then the answer may be a translation with words, as for the preview.
+ */
+export function polishPrompt(target: Language, native: Language, mayTranslate: boolean): string {
+  return [
+    `You help a software developer who is learning ${target.prompt} write messages to a coding assistant. Their native language is ${native.prompt}.`,
+    mayTranslate
+      ? `If the message is not written in ${target.prompt}, answer {"mode":"translate","text":"<its translation into natural, idiomatic ${target.prompt}>","words":[{"word":"<word or phrase from the translation>","note":"<note>"}]} with at most 5 key words or phrases worth learning, each "note" a very short meaning or usage note written in ${native.prompt}. If it is written in ${target.prompt}:`
+      : `The message is written in ${target.prompt}.`,
+    'if it is already correct and natural, answer {"mode":"same"};',
+    'otherwise answer {"mode":"fix","text":"<the whole corrected draft>","items":[{"wrong":"<fragment>","right":"<fragment>","reason":"<reason>"}]}.',
+    `"text" keeps the meaning, tone and register. "items": at most 3 changes; "wrong" and "right" are short exact fragments; "reason" is a very short explanation written in ${native.prompt}.`,
+    'Change only what is wrong or clearly unnatural; do not rephrase what is fine.',
+    'Write plain text without Markdown formatting.',
+    MARKERS,
+    'Keep file paths, identifiers, slash commands (/name), @mentions and numbers exactly as they are.',
+    NOTES_SHORT,
+    JSON_ONLY,
   ].join(' ')
+}
+
+export type Item = { wrong: string; right: string; reason: string }
+export type Word = { word: string; note: string }
+
+/** A model's structured answer for a draft; see `parseFeedback`. */
+export type Feedback =
+  | { mode: 'same' }
+  | { mode: 'fix'; text: string; items: Item[] }
+  | { mode: 'translate'; text: string; words: Word[] }
+
+export const MAX_ITEMS = 3
+export const MAX_WORDS = 5
+
+/**
+ * Reads the model's JSON answer, tolerantly: ```json fences are stripped and the outermost
+ * `{...}` is taken. Entries of the wrong shape are dropped; items are capped at 3, words at 5.
+ * Undefined when the reply is not such an object (a small model that wrote plain text): the
+ * caller then handles it as plain text (`<<SAME>>`, `<<FIX>> text`, or a translation).
+ */
+export function parseFeedback(raw: string): Feedback | undefined {
+  const from = raw.indexOf('{')
+  const to = raw.lastIndexOf('}')
+  if (from < 0 || to <= from) return undefined
+  let v: unknown
+  try {
+    v = JSON.parse(raw.slice(from, to + 1))
+  } catch {
+    return undefined
+  }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
+  const o = v as Record<string, unknown>
+  const str = (x: unknown) => (typeof x === 'string' ? x.trim() : '')
+  const list = (x: unknown) => (Array.isArray(x) ? x : [])
+  if (o.mode === 'same') return { mode: 'same' }
+  const text = str(o.text)
+  if (!text) return undefined
+  if (o.mode === 'fix') {
+    const items: Item[] = []
+    for (const it of list(o.items)) {
+      const r = it && typeof it === 'object' ? (it as Record<string, unknown>) : {}
+      const wrong = str(r.wrong)
+      const right = str(r.right)
+      if (wrong && right) items.push({ wrong, right, reason: str(r.reason) })
+    }
+    return { mode: 'fix', text, items: items.slice(0, MAX_ITEMS) }
+  }
+  if (o.mode === 'translate') {
+    const words: Word[] = []
+    for (const w of list(o.words)) {
+      const r = w && typeof w === 'object' ? (w as Record<string, unknown>) : {}
+      const word = str(r.word)
+      if (word) words.push({ word, note: str(r.note) })
+    }
+    return { mode: 'translate', text, words: words.slice(0, MAX_WORDS) }
+  }
+  return undefined
 }
 
 /** FNV-1a, enough to key a cache. */

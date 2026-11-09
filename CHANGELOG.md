@@ -2,6 +2,12 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.4.0] - 2026-11-09
+
+### Added
+- **Native language setting** (`Lingo · Native language`, default 简体中文): explanations and word notes are written in it.
+- **Structured feedback in the preview band**: a draft already in the target language shows what was changed, one dim row per change (`"wrong" → "right"  reason`, at most 3); a translated draft shows up to 5 key words with short notes (`word — note · word — note`). The band fits `maxRows`, the first row always kept. A model that does not answer JSON (a small local one) falls back to the plain preview. Glosses under sent messages are unchanged.
+
 ## [0.3.3] - 2026-11-09
 
 ### Changed

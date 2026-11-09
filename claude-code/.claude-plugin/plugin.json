@@ -1,6 +1,6 @@
 {
   "name": "lingo",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Learn a language while you code: shows a translation under your prompts and Claude's replies, and a live preview while you type. Translates with Claude or any OpenAI-compatible model (Ollama, OpenRouter, ...).",
   "author": {
     "name": "Roy",
@@ -40,6 +40,25 @@
         "Русский",
         "Tiếng Việt",
         "Off"
+      ]
+    },
+    "nativeLanguage": {
+      "type": "string",
+      "title": "Lingo · Native language",
+      "description": "Your own language: explanations and word notes are written in it.",
+      "default": "简体中文",
+      "options": [
+        "English",
+        "Français",
+        "Español",
+        "Deutsch",
+        "Português",
+        "日本語",
+        "한국어",
+        "简体中文",
+        "繁體中文",
+        "Русский",
+        "Tiếng Việt"
       ]
     },
     "previewWhileTyping": {
