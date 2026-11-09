@@ -1,6 +1,6 @@
 {
   "name": "lingo",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Learn a language while you code: shows a translation under your prompts and Claude's replies, and a live preview while you type. Translates with Claude or any OpenAI-compatible model (Ollama, OpenRouter, ...).",
   "author": {
     "name": "Roy",

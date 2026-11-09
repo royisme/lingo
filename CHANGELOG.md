@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.4.4] - 2026-11-09
+
+### Fixed
+- **A full store no longer stops translations being kept**: `$.store` holds 4 MiB for the whole plugin, and once it was full every save failed silently, for good. Now a rejected save frees the 100 oldest cached translations and tries once more; if that fails too, it gives up with one line in the debug log.
+
 ## [0.4.3] - 2026-11-09
 
 ### Added

@@ -1126,6 +1126,64 @@ test('a settled translation is kept for later sessions, with an index of the new
   expect(store.get('gloss-index-2')).toEqual([id])
 })
 
+function fullStore(initial: [string, unknown][], failures: number) {
+  const store = new Map<string, unknown>(initial)
+  const log = { fails: failures, deletes: [] as string[] }
+  return { store, log }
+}
+
+test('a full store frees the 100 oldest translations, writes the shorter index, retries once', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  answer(on, 'Look into the login timeout.')
+  const ids = Array.from({ length: 150 }, (_, i) => `old${i}`)
+  const { store, log } = fullStore([['gloss-index-2', ids], ...ids.map(i => [`g2:${i}`, { status: 'done', text: 'x' }] as [string, unknown])], 1)
+  on('store.get', (_: any, e: any) => ({ value: store.get(e.key) }))
+  on('store.set', (_: any, e: any) => {
+    if (log.fails > 0) {
+      log.fails--
+      throw new Error('store full')
+    }
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.delete', (_: any, e: any) => {
+    log.deletes.push(e.key)
+    store.delete(e.key)
+    return { value: undefined }
+  })
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-full'))
+  await clock.settle()
+  await ui.unmount()
+  const id = hash('en\u0000帮我看一下登录超时')
+  expect(log.deletes.slice(0, 100)).toEqual(ids.slice(0, 100).map(i => `g2:${i}`))
+  expect(store.has('g2:old99')).toBe(false)
+  expect(store.has('g2:old100')).toBe(true)
+  expect(store.get(`g2:${id}`)).toEqual({ status: 'done', text: 'Look into the login timeout.' })
+  expect(store.get('gloss-index-2')).toEqual([...ids.slice(100), id])
+})
+
+test('a store that keeps rejecting never throws; the row keeps its translation; one debug line', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  answer(on, 'Look into the login timeout.')
+  const logged: string[] = []
+  on('ui.log', (_: any, e: any) => {
+    logged.push(String(e.message ?? e.text ?? e))
+    return { value: undefined }
+  })
+  on('store.get', () => ({ value: ['a', 'b'] }))
+  on('store.set', () => {
+    throw new Error('store full')
+  })
+  on('store.delete', () => ({ value: undefined }))
+  engineRow(on)
+  const ui = await $.ui.mount(userRow('帮我看一下登录超时', 'desktop', 'm-stuck'))
+  await clock.settle()
+  expect((await ui.find({ type: 'Text', text: /login timeout/ }))?.text).toBe('Look into the login timeout.')
+  await ui.unmount()
+  expect(logged.filter(l => l.includes('store full')).length).toBeLessThanOrEqual(1)
+})
+
 test('a translation kept under the old cache key (before 0.4.1) is not reused', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   const asked = answer(on, 'Look into the login timeout.')

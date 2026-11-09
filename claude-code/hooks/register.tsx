@@ -380,19 +380,59 @@ async function dropOldGlosses($: EngineInterface) {
 }
 
 let storeChain: Promise<void> = Promise.resolve()
+let storeFullLogged = false
+
+/** How many of the oldest cached translations a full store gives up to make room. */
+const EVICT_GLOSSES = 100
+
+/**
+ * Sets a store key; when the store rejects it (4 MiB for the whole plugin), deletes the EVICT_GLOSSES oldest
+ * translation-cache entries (front of the index), writes the shortened index and retries the set once.
+ * Never throws: when the retry fails too it logs once per load and resolves false (true when the value was kept).
+ * The eviction's own index write is a plain set, so it cannot evict again.
+ * Writers must call it from `storeChain` (see keepGloss), so evictions and other writes never interleave.
+ */
+async function storeSet($: EngineInterface, key: string, value: unknown): Promise<boolean> {
+  try {
+    await $.store.set(key, value)
+    return true
+  } catch {
+    // full (or failing): make room below
+  }
+  let retry = value
+  try {
+    const index = (await $.store.get(STORE_INDEX)) as string[] | undefined
+    if (Array.isArray(index) && index.length > 0) {
+      const dropped = index.slice(0, EVICT_GLOSSES)
+      for (const id of dropped) await $.store.delete(`${GLOSS_KEY}${id}`)
+      await $.store.set(STORE_INDEX, index.slice(EVICT_GLOSSES))
+      // an index being written must not name what was just deleted
+      if (key === STORE_INDEX && Array.isArray(value)) retry = value.filter(id => !dropped.includes(id))
+    }
+    await $.store.set(key, retry)
+    return true
+  } catch {
+    if (!storeFullLogged) {
+      storeFullLogged = true
+      $.ui.log(`Lingo: store full; could not save ${key}`, { to: 'debug' })
+    }
+    return false
+  }
+}
 
 /** Keeps a settled translation, the newest STORED_GLOSSES of them; writes one at a time. */
 function keepGloss($: EngineInterface, id: string, gloss: Gloss) {
   if (gloss.status !== 'done' && gloss.status !== 'same') return
   storeChain = storeChain
     .then(async () => {
+      if (!(await storeSet($, `${GLOSS_KEY}${id}`, { status: gloss.status, text: gloss.text }))) return
+      // read after the entry write: a full store may have just shortened the index
       const index = ((await $.store.get(STORE_INDEX)) as string[] | undefined) ?? []
       const next = [...index.filter(k => k !== id), id]
-      await $.store.set(`${GLOSS_KEY}${id}`, { status: gloss.status, text: gloss.text })
       for (const old of next.splice(0, Math.max(0, next.length - STORED_GLOSSES))) await $.store.delete(`${GLOSS_KEY}${old}`)
-      await $.store.set(STORE_INDEX, next)
+      await storeSet($, STORE_INDEX, next)
     })
-    .catch(() => undefined) // a full or failing store only costs a translation later
+    .catch(() => undefined) // a failing store only costs a translation later
 }
 
 async function translate($: EngineInterface, text: string, target: Language, allowSame: boolean) {
