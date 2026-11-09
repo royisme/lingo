@@ -45,6 +45,7 @@ Open `/config` and look for **Lingo**:
 | **Fold translations** | `true` | Each translation starts folded as `▸ Translate`: nothing is translated, or paid for, until you open it. Turn off to translate every message as it appears |
 | **Provider** | `Claude` | `Claude` (through Claude Code, your account) or `OpenAI-compatible` (see below) |
 | **Provider URL** | `http://localhost:11434/v1` | With `OpenAI-compatible`: the API base, ending in `/v1` |
+| **Provider API key** | empty | With `OpenAI-compatible`: the provider's key (none for a local Ollama). Stored in plain text in `settings.json` |
 | **Translation model** | `haiku` | The model that translates: an alias or a full id (`claude-haiku-4-5`, or your gateway's model name). Set a full id if `haiku` isn't available to you |
 
 Or switch at any time without opening `/config`:
@@ -61,7 +62,7 @@ Or switch at any time without opening `/config`:
 
 ## Other providers (OpenAI-compatible)
 
-Lingo can translate with any endpoint that speaks the OpenAI chat-completions API: a local **Ollama** or **LM Studio**, **OpenRouter**, **Groq**, and many more. Set **Provider** to `OpenAI-compatible`, **Provider URL** to the API base, and **Translation model** to the provider's model name.
+Lingo can translate with any endpoint that speaks the OpenAI chat-completions API: a local **Ollama** or **LM Studio**, **OpenRouter**, **Groq**, and many more. Set **Provider** to `OpenAI-compatible`, **Provider URL** to the API base, and **Translation model** to the provider's model name; a service that needs a key takes it in **Provider API key**.
 
 | Provider | Provider URL | Translation model (example) |
 | --- | --- | --- |
@@ -69,12 +70,6 @@ Lingo can translate with any endpoint that speaks the OpenAI chat-completions AP
 | LM Studio (local, no key) | `http://localhost:1234/v1` | the loaded model's name |
 | OpenRouter | `https://openrouter.ai/api/v1` | a `:free` model |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
-
-An API key is kept in secure storage, not in `/config`. Set it from your terminal:
-
-```sh
-echo '{"providerApiKey":"sk-..."}' | claude plugin configure lingo --values-stdin
-```
 
 Requests go through Claude Code's own network layer (`$.http.fetch`), so your organization's web-fetch policy applies. A reasoning model's `<think>` block is dropped from the translation.
 

@@ -83,7 +83,7 @@ export function readChat(status: number, body: string): Attempt {
   const said = msg ? `: ${msg}` : ''
   if (status === 429) return { ok: false, why: `rate_limit 429${said}`, limited: true, passing: true }
   if (status === 401 || status === 403)
-    return { ok: false, why: `unauthorized ${status}; set the API key: claude plugin configure lingo`, limited: false, passing: false }
+    return { ok: false, why: `unauthorized ${status}; set Lingo · Provider API key in /config`, limited: false, passing: false }
   if (status === 404)
     return { ok: false, why: `not found 404${said}; check Lingo · Provider URL and Translation model`, limited: false, passing: false }
   if (status === 529 || status === 503) return { ok: false, why: `overloaded ${status}${said}`, limited: true, passing: true }

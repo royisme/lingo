@@ -45,6 +45,7 @@ Terminal, Desktop, VS Code 및 Mobile에서 모두 작동합니다.
 | **Fold translations** | `true` | 번역은 `▸ Translate`로 접힌 채 시작하며, 펼치기 전에는 번역도 과금도 되지 않습니다. 끄면 메시지가 나타날 때마다 번역합니다 |
 | **Provider** | `Claude` | `Claude`(Claude Code를 통해, 내 계정으로) 또는 `OpenAI-compatible`(아래 참고) |
 | **Provider URL** | `http://localhost:11434/v1` | `OpenAI-compatible`일 때: `/v1`로 끝나는 API 기본 주소 |
+| **Provider API key** | 비어 있음 | `OpenAI-compatible`일 때: 서비스의 API 키(로컬 Ollama는 불필요). `settings.json`에 평문으로 저장됩니다 |
 | **Translation model** | `haiku` | 번역에 쓰는 모델: 별칭 또는 전체 ID(`claude-haiku-4-5`, 또는 게이트웨이의 모델 이름). `haiku`를 쓸 수 없는 환경이면 전체 ID를 입력합니다 |
 
 `/config`를 열지 않고도 언제든 전환할 수 있습니다:
@@ -61,7 +62,7 @@ Terminal, Desktop, VS Code 및 Mobile에서 모두 작동합니다.
 
 ## 다른 제공자 (OpenAI 호환)
 
-OpenAI chat-completions API를 지원하는 엔드포인트라면 번역에 쓸 수 있습니다. 로컬의 **Ollama**, **LM Studio**, 그리고 **OpenRouter**, **Groq** 등입니다. **Provider**를 `OpenAI-compatible`로, **Provider URL**에 API 기본 주소를, **Translation model**에 그 서비스의 모델 이름을 설정합니다.
+OpenAI chat-completions API를 지원하는 엔드포인트라면 번역에 쓸 수 있습니다. 로컬의 **Ollama**, **LM Studio**, 그리고 **OpenRouter**, **Groq** 등입니다. **Provider**를 `OpenAI-compatible`로, **Provider URL**에 API 기본 주소를, **Translation model**에 그 서비스의 모델 이름을 설정합니다. 키가 필요한 서비스는 **Provider API key**에 입력합니다.
 
 | 서비스 | Provider URL | Translation model (예) |
 | --- | --- | --- |
@@ -69,12 +70,6 @@ OpenAI chat-completions API를 지원하는 엔드포인트라면 번역에 쓸 
 | LM Studio (로컬, 키 불필요) | `http://localhost:1234/v1` | 불러온 모델의 이름 |
 | OpenRouter | `https://openrouter.ai/api/v1` | `:free`가 붙은 모델 |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
-
-API 키는 `/config`가 아니라 안전한 저장소에 보관됩니다. 터미널에서 설정합니다:
-
-```sh
-echo '{"providerApiKey":"sk-..."}' | claude plugin configure lingo --values-stdin
-```
 
 요청은 Claude Code 자체 네트워크 계층(`$.http.fetch`)을 거치므로 조직의 웹 접근 정책이 적용됩니다. 추론 모델이 출력한 `<think>` 부분은 번역에서 제외됩니다.
 

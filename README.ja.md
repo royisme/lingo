@@ -45,6 +45,7 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 | **Fold translations** | `true` | 訳文は `▸ Translate` として折りたたまれた状態で始まり、開くまで翻訳も課金もされません。オフにすると、メッセージが表示されるたびに翻訳します |
 | **Provider** | `Claude` | `Claude`（Claude Code 経由、あなたのアカウント）または `OpenAI-compatible`（下記参照） |
 | **Provider URL** | `http://localhost:11434/v1` | `OpenAI-compatible` のとき：`/v1` で終わる API のベース URL |
+| **Provider API key** | 空 | `OpenAI-compatible` のとき：サービスの API キー（ローカルの Ollama は不要）。`settings.json` に平文で保存されます |
 | **Translation model** | `haiku` | 翻訳に使うモデル。エイリアスか完全な ID（`claude-haiku-4-5`、またはゲートウェイのモデル名）。`haiku` が使えない環境では完全な ID を指定します |
 
 `/config` を開かずにいつでも切り替えることもできます：
@@ -61,7 +62,7 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 
 ## ほかのプロバイダー（OpenAI 互換）
 
-OpenAI の chat-completions API に対応したエンドポイントなら翻訳に使えます。ローカルの **Ollama** や **LM Studio**、**OpenRouter**、**Groq** などです。**Provider** を `OpenAI-compatible` にし、**Provider URL** に API のベース URL、**Translation model** にそのサービスのモデル名を設定します。
+OpenAI の chat-completions API に対応したエンドポイントなら翻訳に使えます。ローカルの **Ollama** や **LM Studio**、**OpenRouter**、**Groq** などです。**Provider** を `OpenAI-compatible` にし、**Provider URL** に API のベース URL、**Translation model** にそのサービスのモデル名を設定します。キーが必要なサービスは **Provider API key** に入力します。
 
 | サービス | Provider URL | Translation model（例） |
 | --- | --- | --- |
@@ -69,12 +70,6 @@ OpenAI の chat-completions API に対応したエンドポイントなら翻訳
 | LM Studio（ローカル、キー不要） | `http://localhost:1234/v1` | 読み込んだモデルの名前 |
 | OpenRouter | `https://openrouter.ai/api/v1` | `:free` が付いたモデル |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
-
-API キーは `/config` ではなく安全なストレージに保存されます。ターミナルで設定します：
-
-```sh
-echo '{"providerApiKey":"sk-..."}' | claude plugin configure lingo --values-stdin
-```
 
 リクエストは Claude Code 自身のネットワーク層（`$.http.fetch`）を通るため、組織の Web アクセスポリシーが適用されます。推論モデルの `<think>` 部分は訳文から取り除かれます。
 

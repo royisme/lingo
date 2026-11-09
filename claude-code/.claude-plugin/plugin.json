@@ -1,6 +1,6 @@
 {
   "name": "lingo",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Learn a language while you code: shows a translation under your prompts and Claude's replies, and a live preview while you type. Translates with Claude or any OpenAI-compatible model (Ollama, OpenRouter, ...).",
   "author": {
     "name": "Roy",
@@ -97,9 +97,8 @@
     "providerApiKey": {
       "type": "string",
       "title": "Lingo · Provider API key",
-      "description": "With an OpenAI-compatible provider: its API key, sent as a Bearer token. Leave empty for a local Ollama. Kept in secure storage.",
-      "default": "",
-      "sensitive": true
+      "description": "With an OpenAI-compatible provider: its API key, sent as a Bearer token. Leave empty for a local Ollama. Stored in plain text in settings.json.",
+      "default": ""
     }
   }
 }

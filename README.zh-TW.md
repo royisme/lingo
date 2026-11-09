@@ -45,6 +45,7 @@ claude plugin install lingo --marketplace royisme/lingo
 | **Fold translations** | `true` | 每則譯文預設摺疊為 `▸ Translate`，點開之前不翻譯、也不產生費用。關閉則每則訊息出現時自動翻譯 |
 | **Provider** | `Claude` | `Claude`（經由 Claude Code，用你的帳號）或 `OpenAI-compatible`（見下文） |
 | **Provider URL** | `http://localhost:11434/v1` | 選 `OpenAI-compatible` 時：API 位址，以 `/v1` 結尾 |
+| **Provider API key** | 空 | 選 `OpenAI-compatible` 時：服務的 API key（本機 Ollama 不需要）。以明文儲存在 `settings.json` |
 | **Translation model** | `haiku` | 負責翻譯的模型：別名或完整 id（如 `claude-haiku-4-5`，或閘道提供的模型名稱）。`haiku` 在你的帳號或閘道上無法使用時，填完整 id |
 
 你也可以隨時切換，無需開啟 `/config`：
@@ -61,7 +62,7 @@ claude plugin install lingo --marketplace royisme/lingo
 
 ## 其他 provider（OpenAI 相容）
 
-Lingo 可以用任何支援 OpenAI chat-completions 介面的服務來翻譯：本機的 **Ollama**、**LM Studio**，以及 **OpenRouter**、**Groq** 等。把 **Provider** 設為 `OpenAI-compatible`，**Provider URL** 填 API 位址，**Translation model** 填該服務的模型名稱。
+Lingo 可以用任何支援 OpenAI chat-completions 介面的服務來翻譯：本機的 **Ollama**、**LM Studio**，以及 **OpenRouter**、**Groq** 等。把 **Provider** 設為 `OpenAI-compatible`，**Provider URL** 填 API 位址，**Translation model** 填該服務的模型名稱；需要 key 的服務，把 key 填在 **Provider API key**。
 
 | 服務 | Provider URL | Translation model（範例） |
 | --- | --- | --- |
@@ -69,12 +70,6 @@ Lingo 可以用任何支援 OpenAI chat-completions 介面的服務來翻譯：�
 | LM Studio（本機，免 key） | `http://localhost:1234/v1` | 已載入模型的名稱 |
 | OpenRouter | `https://openrouter.ai/api/v1` | 帶 `:free` 後綴的模型 |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
-
-API key 存在系統的安全儲存區，不會顯示在 `/config` 中。在終端機裡設定：
-
-```sh
-echo '{"providerApiKey":"sk-..."}' | claude plugin configure lingo --values-stdin
-```
 
 請求經由 Claude Code 自己的網路層（`$.http.fetch`）送出，所屬組織的網路存取政策同樣適用。推理模型輸出的 `<think>` 部分會從譯文中去掉。
 

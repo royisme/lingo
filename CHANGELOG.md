@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.3.2] - 2026-11-09
+
+### Fixed
+- **Provider API key is a `/config` row**: it was a secure option, so it never showed in `/config`. It is now set there like the other provider rows (stored in plain text in `settings.json`).
+
 ## [0.3.1] - 2026-11-07
 
 ### Fixed

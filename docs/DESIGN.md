@@ -130,7 +130,7 @@ Settings live in Claude Code's own `/config` menu (manifest `userConfig`), so th
 | Lingo · Provider | `lingo.provider` | choice: Claude, OpenAI-compatible | Claude |
 | Lingo · Translation model | `lingo.translationModel` | text | haiku |
 | Lingo · Provider URL | `lingo.providerBaseUrl` | text | http://localhost:11434/v1 |
-| Lingo · Provider API key | `lingo.providerApiKey` | text, sensitive (secure storage; not a `/config` row) | empty |
+| Lingo · Provider API key | `lingo.providerApiKey` | text (plain, in settings.json) | empty |
 
 Choice values: `English, Français, Español, Deutsch, Português, 日本語, 한국어, 简体中文, 繁體中文, Русский, Tiếng Việt, Off`.
 
@@ -192,7 +192,7 @@ UI strings are English in 0.1; localizing them to the person's source language i
 | Claude (default) | `$.model.complete` with **Translation model** (`haiku`), on the session's own account |
 | OpenAI-compatible | `$.http.fetch` `POST <Provider URL>/chat/completions`, `{ model, messages: [system, user], max_tokens, temperature: 0.2, stream: false }`, `Authorization: Bearer <key>` when a key is set; 30 s limit kept by a timer, since the fetch has none |
 
-Both answer the same `Attempt` (`hooks/openai.ts`), so pacing, cooldown, retries, the wait limit and the failure words are shared. OpenAI-compatible mapping: 429 → rate limit (cools down), 503/529 → overload (cools down), other 5xx and no connection → may pass, 401/403 → `unauthorized; set the API key: claude plugin configure lingo`, 404 → `not found; check Lingo · Provider URL and Translation model`, other 4xx → the provider's own message. `finish_reason: length` marks a cut gloss; a `<think>…</think>` block is dropped. The default model `haiku` is never sent to another provider: the row asks for its model name instead. No SDK is bundled: a hooks module imports only its own files and has no global `fetch`, and one non-streaming endpoint is a few dozen lines.
+Both answer the same `Attempt` (`hooks/openai.ts`), so pacing, cooldown, retries, the wait limit and the failure words are shared. OpenAI-compatible mapping: 429 → rate limit (cools down), 503/529 → overload (cools down), other 5xx and no connection → may pass, 401/403 → `unauthorized; set Lingo · Provider API key in /config`, 404 → `not found; check Lingo · Provider URL and Translation model`, other 4xx → the provider's own message. `finish_reason: length` marks a cut gloss; a `<think>…</think>` block is dropped. The default model `haiku` is never sent to another provider: the row asks for its model name instead. No SDK is bundled: a hooks module imports only its own files and has no global `fetch`, and one non-streaming endpoint is a few dozen lines.
 
 ## 9. Cost controls
 

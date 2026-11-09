@@ -45,6 +45,7 @@ Abre `/config` y busca **Lingo**:
 | **Fold translations** | `true` | Cada traducción empieza plegada como `▸ Translate`: no se traduce ni se cobra nada hasta que la abres. Desactívalo para traducir cada mensaje en cuanto aparece |
 | **Provider** | `Claude` | `Claude` (a través de Claude Code, tu cuenta) u `OpenAI-compatible` (ver abajo) |
 | **Provider URL** | `http://localhost:11434/v1` | Con `OpenAI-compatible`: la base de la API, terminada en `/v1` |
+| **Provider API key** | vacío | Con `OpenAI-compatible`: la clave del servicio (ninguna para Ollama en local). Se guarda en texto plano en `settings.json` |
 | **Translation model** | `haiku` | El modelo que traduce: un alias o un id completo (`claude-haiku-4-5`, o el nombre del modelo de tu pasarela). Usa un id completo si `haiku` no está disponible para ti |
 
 O cambia en cualquier momento sin abrir `/config`:
@@ -61,7 +62,7 @@ O cambia en cualquier momento sin abrir `/config`:
 
 ## Otros proveedores (compatibles con OpenAI)
 
-Lingo puede traducir con cualquier servicio que hable la API chat-completions de OpenAI: **Ollama** o **LM Studio** en local, **OpenRouter**, **Groq** y muchos más. Pon **Provider** en `OpenAI-compatible`, **Provider URL** en la base de la API y **Translation model** en el nombre del modelo del servicio.
+Lingo puede traducir con cualquier servicio que hable la API chat-completions de OpenAI: **Ollama** o **LM Studio** en local, **OpenRouter**, **Groq** y muchos más. Pon **Provider** en `OpenAI-compatible`, **Provider URL** en la base de la API y **Translation model** en el nombre del modelo del servicio; si el servicio pide una clave, va en **Provider API key**.
 
 | Servicio | Provider URL | Translation model (ejemplo) |
 | --- | --- | --- |
@@ -69,12 +70,6 @@ Lingo puede traducir con cualquier servicio que hable la API chat-completions de
 | LM Studio (local, sin clave) | `http://localhost:1234/v1` | el nombre del modelo cargado |
 | OpenRouter | `https://openrouter.ai/api/v1` | un modelo `:free` |
 | Groq | `https://api.groq.com/openai/v1` | `llama-3.1-8b-instant` |
-
-La clave de API se guarda en el almacenamiento seguro, no en `/config`. Configúrala desde tu terminal:
-
-```sh
-echo '{"providerApiKey":"sk-..."}' | claude plugin configure lingo --values-stdin
-```
 
 Las solicitudes pasan por la capa de red de Claude Code (`$.http.fetch`), así que se aplica la política de acceso web de tu organización. El bloque `<think>` de un modelo de razonamiento se elimina de la traducción.
 
