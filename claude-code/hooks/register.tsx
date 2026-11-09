@@ -27,7 +27,7 @@ import {
   worthPreview,
 } from './lang'
 import type { Item, Language, Word } from './lang'
-import { addWords, readDeck } from './cards'
+import { addWords, deckStats, readDeck, removeWord } from './cards'
 import { chatRequest, hostOf, readChat } from './openai'
 import type { Attempt } from './openai'
 
@@ -135,7 +135,7 @@ const TEXT = {
   settings: 'Settings…',
 }
 
-const ARGUMENT_HINT = ['show', ...LANGUAGES.map(l => l.code), 'off'].join(' | ')
+const ARGUMENT_HINT = ['show | review | words | forget <word>', ...LANGUAGES.map(l => l.code), 'off'].join(' | ')
 
 // Module variables: lost on a reload, which at worst runs one translation twice.
 // A gloss left `pending` with no entry here was started by a module since reloaded: it is redone.
@@ -931,6 +931,46 @@ async function showLatest($: EngineInterface): Promise<{ text: string }> {
   return { text: 'Lingo: translating the latest reply.' }
 }
 
+const LATEST_WORDS = 10
+
+/** `/lingo words`: one line about the deck; read after the pending writes settled. */
+async function wordsReport($: EngineInterface): Promise<{ text: string }> {
+  const target = settings.target
+  if (!target) return { text: 'Lingo is off. Turn it on with /lingo en (or another language).' }
+  await storeChain
+  const deck = readDeck(await $.store.get(deckKey(target)))
+  if (deck.length === 0) {
+    return { text: 'Lingo: no words saved yet. Send a prompt in your own language after its preview shows; its key words are saved.' }
+  }
+  const { total, due, fresh } = deckStats(deck, await $.clock.now())
+  const latest = [...deck].sort((x, y) => y.added - x.added).slice(0, LATEST_WORDS).map(c => c.word)
+  const more = deck.length > LATEST_WORDS ? ', …' : ''
+  return {
+    text: `Lingo · ${target.code.toUpperCase()}: ${total} ${total === 1 ? 'word' : 'words'} · ${due} due · ${fresh} new. Latest: ${latest.join(', ')}${more} · /lingo review · /lingo forget <word>`,
+  }
+}
+
+/** `/lingo forget <word>`: a read-modify-write on the shared chain; answers once the write settled. */
+async function forgetWord($: EngineInterface, word: string): Promise<{ text: string }> {
+  const target = settings.target
+  if (!target) return { text: 'Lingo is off. Turn it on with /lingo en (or another language).' }
+  if (!word) return { text: 'Lingo: say which word to forget, e.g. /lingo forget flaky.' }
+  const job = async () => {
+    const key = deckKey(target)
+    const { deck, removed } = removeWord(readDeck(await $.store.get(key)), word)
+    if (!removed) return { text: `Lingo: no card "${word}".` }
+    if (!(await storeSet($, key, deck))) return { text: `Lingo: couldn't remove "${word}" (the store rejected the write).` }
+    return { text: `Lingo: removed "${word}".` }
+  }
+  const run = storeChain.then(job)
+  storeChain = run.then(() => undefined, () => undefined)
+  try {
+    return await run
+  } catch {
+    return { text: `Lingo: couldn't remove "${word}".` }
+  }
+}
+
 // ---- hooks -----------------------------------------------------------------
 
 export const register: Register = (on, options) => {
@@ -942,7 +982,7 @@ export const register: Register = (on, options) => {
     await $.state.set(LIMITED, false)
     await $.command.register({
       name: 'lingo',
-      description: 'Translate the latest reply (/lingo show) or switch the language: /lingo fr, /lingo ja, /lingo off',
+      description: 'Translate the latest reply (/lingo show), review saved words (/lingo review, words, forget), or switch the language: /lingo fr, /lingo off',
       argumentHint: ARGUMENT_HINT,
     })
     void dropOldGlosses($)
@@ -952,6 +992,9 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'lingo' }, async ($, e) => {
     const arg = String(e.args ?? '').trim()
     if (arg.toLowerCase() === 'show') return showLatest($)
+    if (arg.toLowerCase() === 'words') return wordsReport($)
+    const forget = /^forget(?:\s+([\s\S]*))?$/i.exec(arg)
+    if (forget) return forgetWord($, (forget[1] ?? '').trim())
     const lang = findLanguage(arg)
     const option = arg.toLowerCase() === 'off' ? OFF : lang?.option
     if (!option) {

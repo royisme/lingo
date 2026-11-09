@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.4.6] - 2026-11-09
+
+### Added
+- **`/lingo words` and `/lingo forget <word>`**: `/lingo words` reports the saved deck in one line (words, due, new, the latest ten); `/lingo forget <word>` removes a card (case, width and spacing do not matter).
+
 ## [0.4.5] - 2026-11-09
 
 ### Added

@@ -1943,3 +1943,62 @@ test('Use on a polish (Better) band captures nothing', AUTO, async ($, on) => {
   expect(store.has('cards1:en')).toBe(false)
   await band.unmount()
 })
+
+// ---- flashcards: /lingo words, /lingo forget ----------------------------------
+
+const DAY_MS = 86_400_000
+const NOW = 1_000_000_000_000
+
+function cardOf(word: string, added: number, extra: object = {}) {
+  return { id: hash(plain(word)), word, note: '注', native: 'zh-CN', added, due: added, ivl: 0, ease: 2.5, reps: 0, lapses: 0, ...extra }
+}
+
+async function lingoCmd($: any, args: string) {
+  return ((await $.command.run({ command: 'lingo', args } as any)) as any).text as string
+}
+
+test('/lingo words on an empty deck says how cards get saved', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  memStore(on)
+  expect(await lingoCmd($, 'words')).toBe(
+    'Lingo: no words saved yet. Send a prompt in your own language after its preview shows; its key words are saved.',
+  )
+})
+
+test('/lingo words counts due and new cards and lists the 10 newest first', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  const names = 'a1 a2 a3 a4 a5 a6 a7 a8 a9 b10 b11 b12'.split(' ')
+  const deck = names.map((w, i) => cardOf(w, NOW - 1000 + i, i === 0 ? { reps: 2, ivl: 3, due: NOW - 1 } : i === 1 ? { reps: 2, ivl: 3, due: NOW + 5 * DAY_MS } : {}))
+  store.set('cards1:en', deck)
+  const text = await lingoCmd($, 'words')
+  expect(text).toBe(
+    'Lingo · EN: 12 words · 1 due · 10 new. Latest: b12, b11, b10, a9, a8, a7, a6, a5, a4, a3, … · /lingo review · /lingo forget <word>',
+  )
+})
+
+test('/lingo forget removes by normalized word and the store no longer has it', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  store.set('cards1:en', [cardOf('flaky', 1), cardOf('timeout', 2)])
+  expect(await lingoCmd($, 'forget  FLAKY ')).toBe('Lingo: removed "FLAKY".')
+  expect((store.get('cards1:en') as any[]).map(c => c.word)).toEqual(['timeout'])
+  expect(await lingoCmd($, 'forget flaky')).toBe('Lingo: no card "flaky".')
+  expect(await lingoCmd($, 'forget ｔｉｍｅｏｕｔ')).toBe('Lingo: removed "ｔｉｍｅｏｕｔ".')
+  expect(store.get('cards1:en')).toEqual([])
+})
+
+test('/lingo forget with no word shows the usage', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  memStore(on)
+  expect(await lingoCmd($, 'forget')).toBe('Lingo: say which word to forget, e.g. /lingo forget flaky.')
+  expect(await lingoCmd($, 'forget   ')).toBe('Lingo: say which word to forget, e.g. /lingo forget flaky.')
+})
+
+test('/lingo words and forget with the target Off say Lingo is off', { options: { foldTranslations: false, targetLanguage: 'Off' } } as any, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  memStore(on)
+  const off = 'Lingo is off. Turn it on with /lingo en (or another language).'
+  expect(await lingoCmd($, 'words')).toBe(off)
+  expect(await lingoCmd($, 'forget flaky')).toBe(off)
+})
