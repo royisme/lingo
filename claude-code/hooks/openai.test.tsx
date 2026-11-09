@@ -78,7 +78,7 @@ test('an OpenAI-compatible provider translates through $.http.fetch', { options:
   expect(sent.length).toBe(1)
   expect(sent[0]!.url).toBe('http://localhost:11434/v1/chat/completions')
   expect(sent[0]!.body.model).toBe('qwen2.5:7b')
-  expect(sent[0]!.body.messages[1].content).toBe('帮我看一下登录超时')
+  expect(sent[0]!.body.messages[1].content).toBe('<<<\n帮我看一下登录超时\n>>>')
   expect((await ui.find({ type: 'Text', text: /login timeout/ }))?.text).toBe('Look into the login timeout.')
   await ui.unmount()
 })

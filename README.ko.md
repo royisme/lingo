@@ -43,7 +43,7 @@ Terminal, Desktop, VS Code 및 Mobile에서 모두 작동합니다.
 | **Suggest fixes while typing** | `true` | 초안이 이미 배우는 언어로 쓰여 있으면 프롬프트 입력창 위에 더 자연스러운 표현을 제안합니다. **Use**를 누르면 초안을 바꿉니다; 설명은 모국어로 표시합니다 |
 | **Translate my prompts** | `true` | 전송한 각 프롬프트 아래에 번역을 표시합니다 |
 | **Translate Claude's replies** | `true` | Claude의 각 텍스트 답변 아래에 번역을 표시합니다 |
-| **Fold translations** | `true` | 번역은 `▸ Translate`로 접힌 채 시작하며, 펼치기 전에는 번역도 과금도 되지 않습니다. 끄면 메시지가 나타날 때마다 번역합니다 |
+| **Fold translations** | `true` | 번역은 `▸ Translate`로 접힌 채 시작하며, 펼치기 전에는 번역도 과금도 되지 않습니다. 끄면 프롬프트는 보낼 때 번역하고, 답변은 턴마다 한 번(마지막 답변)만 번역합니다 |
 | **Provider** | `Claude` | `Claude`(Claude Code를 통해, 내 계정으로) 또는 `OpenAI-compatible`(아래 참고) |
 | **Provider URL** | `http://localhost:11434/v1` | `OpenAI-compatible`일 때: `/v1`로 끝나는 API 기본 주소 |
 | **Provider API key** | 비어 있음 | `OpenAI-compatible`일 때: 서비스의 API 키(로컬 Ollama는 불필요). `settings.json`에 평문으로 저장됩니다 |

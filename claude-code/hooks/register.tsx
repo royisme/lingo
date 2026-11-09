@@ -22,6 +22,8 @@ import {
   systemPrompt,
   unshieldExact,
   unshieldForDisplay,
+  unwrapAnswer,
+  wrapForModel,
   worthPreview,
 } from './lang'
 import type { Item, Language, Word } from './lang'
@@ -379,9 +381,9 @@ function keepGloss($: EngineInterface, id: string, gloss: Gloss) {
 
 async function translate($: EngineInterface, text: string, target: Language, allowSame: boolean) {
   const sent = shield(text)
-  const a = await ask($, systemPrompt(target, allowSame), sent.text)
+  const a = await ask($, systemPrompt(target, allowSame), wrapForModel(sent.text))
   if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing } as const
-  const out = a.text.trim()
+  const out = unwrapAnswer(a.text)
   if (allowSame && out === SAME) return { status: 'same', text: '' } as const
   const cut = a.cut ? ' …' : '' // stopped at the cap
   return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) + cut } as const
@@ -395,9 +397,9 @@ type PreviewResult =
 /** A translation of a draft with a few words worth learning; falls back to plain text when the reply is not JSON. */
 async function previewTranslate($: EngineInterface, text: string, target: Language, allowSame: boolean): Promise<PreviewResult> {
   const sent = shield(text)
-  const a = await ask($, previewPrompt(target, settings.native, allowSame), sent.text)
+  const a = await ask($, previewPrompt(target, settings.native, allowSame), wrapForModel(sent.text))
   if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing }
-  const out = a.text.trim()
+  const out = unwrapAnswer(a.text)
   const cut = a.cut ? ' …' : '' // stopped at the cap
   const f = parseFeedback(out)
   if (!f) {
@@ -416,9 +418,9 @@ async function previewTranslate($: EngineInterface, text: string, target: Langua
 /** A draft the developer wrote in the target language: same, or a better version (fix) with its changes explained. */
 async function polish($: EngineInterface, text: string, target: Language, mayTranslate: boolean): Promise<PreviewResult> {
   const sent = shield(text)
-  const a = await ask($, polishPrompt(target, settings.native, mayTranslate), sent.text)
+  const a = await ask($, polishPrompt(target, settings.native, mayTranslate), wrapForModel(sent.text))
   if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing }
-  const out = a.text.trim()
+  const out = unwrapAnswer(a.text)
   const f = parseFeedback(out)
   let fixed: string
   let items: Item[] | undefined
@@ -550,8 +552,12 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
   const id = glossId(target, text)
   // One menu (and one fold) per gloss, so a row whose text changes never shows a stale one.
   const menuId = `${e.requestId}:${id}`
-  const shown = !settings.fold || ((await $.state.get({ ...SHOWN, id: menuId })).value ?? false)
   const kept = (await $.state.get({ ...GLOSS, id })).value
+  // Folded, and with folding off a reply too (one call per turn: the turn's final reply is opened
+  // when the turn completes): closed until opened, unless its translation is already kept.
+  const closed = settings.fold || e.component === 'AssistantMessage'
+  const shown =
+    !closed || ((await $.state.get({ ...SHOWN, id: menuId })).value ?? false) || (!settings.fold && kept?.status === 'done')
   // A row that failed on something passing (a rate limit) under an earlier load, perhaps another
   // provider, is tried once more by this module, and drawn as translating, not as the old failure.
   const retry = shown && kept?.status === 'error' && kept.passing === true && !autoRetried.has(id)
@@ -765,13 +771,33 @@ async function clearPreview($: EngineInterface) {
   if ((await $.state.get(DRAFT)).value) await $.state.set(DRAFT, null)
 }
 
+/**
+ * Polling for the final reply's row after `turn.complete` (it can come before the row is drawn).
+ * A newer turn's `turn.start` bumps `turnToken` and cancels the timer, so an older turn stops looking.
+ */
+let turnToken = 0
+let pollTimer: { cancel: () => void } | undefined
+const POLL_MS = 100
+const POLL_TRIES = 20
+
+/** The answer a turn ended with against a reply's text: equal, or the answer is the last block of a longer reply (or the reverse). */
+function sameReply(a: string, b: string): boolean {
+  const x = a.trim()
+  const y = b.trim()
+  return x !== '' && y !== '' && (x === y || x.endsWith(y) || y.endsWith(x))
+}
+
+async function openLatest($: EngineInterface, reply: { requestId: string; text: string }, target: Language) {
+  await unfold($, `${reply.requestId}:${glossId(target, reply.text)}`, reply.text, target)
+}
+
 /** `/lingo show`: opens and translates the newest reply, for surfaces where its row cannot be clicked. */
 async function showLatest($: EngineInterface): Promise<{ text: string }> {
   const target = settings.target
   if (!target) return { text: 'Lingo is off. Turn it on with /lingo en (or another language).' }
   if (!lastReply) return { text: 'Lingo: no reply to translate yet.' }
   if (decide(lastReply.text, target) === 'skip') return { text: `Lingo: the latest reply needs no translation into ${target.option}.` }
-  await unfold($, `${lastReply.requestId}:${glossId(target, lastReply.text)}`, lastReply.text, target)
+  await openLatest($, lastReply, target)
   return { text: 'Lingo: translating the latest reply.' }
 }
 
@@ -805,6 +831,41 @@ export const register: Register = (on, options) => {
     if ('deny' in r && r.deny) return { text: `Lingo: couldn't change the language (${r.deny}).` }
     return { text: option === OFF ? 'Lingo: translations off.' : `Lingo: translating into ${option}.` }
   })
+
+  // With folding off, a reply costs one call per turn: the final one, translated as the turn ends.
+  // An interrupted or failed turn, a subagent's turn and a turn with no closing text open nothing.
+  on('turn.start', async ($, e, next) => {
+    if (!e.agentId) {
+      turnToken++
+      pollTimer?.cancel()
+      pollTimer = undefined
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('turn.complete', async ($, e, next) => {
+    const target = settings.target
+    if (target && !settings.fold && settings.replies && !e.agentId && e.reason === 'answer' && e.answer) {
+      // The answer names the final reply. Its row may not be drawn yet (`lastReply` can still be an
+      // earlier block): look again for a moment. A render hook must not write state, so the opening
+      // is done here, with this hook's `$`.
+      const answer = e.answer
+      const token = ++turnToken
+      pollTimer?.cancel()
+      let tries = 0
+      const tick = () => {
+        if (token !== turnToken) return
+        if (lastReply && sameReply(lastReply.text, answer)) {
+          pollTimer = undefined
+          void openLatest($, lastReply, target).catch(() => undefined)
+        } else if (++tries < POLL_TRIES) pollTimer = $.clock.after(POLL_MS, tick)
+        else pollTimer = undefined
+      }
+      if (lastReply && sameReply(lastReply.text, answer)) await openLatest($, lastReply, target)
+      else pollTimer = $.clock.after(POLL_MS, tick)
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e)) // never block a turn's end over a translation
 
   // Start translating a prompt the moment it is sent, so its row finds it ready.
   on('prompt.submit', async ($, e, next) => {

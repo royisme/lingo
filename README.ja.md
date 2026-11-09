@@ -43,7 +43,7 @@ Terminal、Desktop、VS Code、Mobile のすべてで動作します。
 | **Suggest fixes while typing** | `true` | 下書きがすでに学習中の言語で書かれているとき、より自然な言い方をプロンプト欄の上に提案します。**Use** で下書きを置き換えます。解説は母語で表示します |
 | **Translate my prompts** | `true` | 送信した各プロンプトの下に翻訳を表示します |
 | **Translate Claude's replies** | `true` | Claude の各テキスト返信の下に翻訳を表示します |
-| **Fold translations** | `true` | 訳文は `▸ Translate` として折りたたまれた状態で始まり、開くまで翻訳も課金もされません。オフにすると、メッセージが表示されるたびに翻訳します |
+| **Fold translations** | `true` | 訳文は `▸ Translate` として折りたたまれた状態で始まり、開くまで翻訳も課金もされません。オフにすると、プロンプトは送信時に翻訳し、返信は1ターンにつき1回（最後の返信）だけ翻訳します |
 | **Provider** | `Claude` | `Claude`（Claude Code 経由、あなたのアカウント）または `OpenAI-compatible`（下記参照） |
 | **Provider URL** | `http://localhost:11434/v1` | `OpenAI-compatible` のとき：`/v1` で終わる API のベース URL |
 | **Provider API key** | 空 | `OpenAI-compatible` のとき：サービスの API キー（ローカルの Ollama は不要）。`settings.json` に平文で保存されます |

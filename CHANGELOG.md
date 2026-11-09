@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.4.1] - 2026-11-09
+
+### Changed
+- **One translation per turn with folding off**: with `Lingo · Fold translations` off, only the final reply of a turn is translated (when the turn completes). The text Claude writes between tool calls shows `▸ Translate` and costs nothing until opened; one already translated still shows its translation. Prompts are still translated as they are sent. Folded mode and `/lingo show` are unchanged.
+
 ## [0.4.0] - 2026-11-09
 
 ### Added

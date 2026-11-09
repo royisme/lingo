@@ -43,7 +43,7 @@ claude plugin install lingo --marketplace royisme/lingo
 | **Suggest fixes while typing** | `true` | 草稿已经是你在学的语言时，在输入框上方给出更自然的写法；点 **Use** 直接替换草稿，并用母语讲解 |
 | **Translate my prompts** | `true` | 在你发送的每条提问下方展示译文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每条文本回复下方展示译文 |
-| **Fold translations** | `true` | 每条译文默认折叠为 `▸ Translate`，点开之前不翻译、也不产生费用。关掉则每条消息出现时自动翻译 |
+| **Fold translations** | `true` | 每条译文默认折叠为 `▸ Translate`，点开之前不翻译、也不产生费用。关掉则提示词在发送时自动翻译，回复每轮只翻译一次（最后一条回复） |
 | **Provider** | `Claude` | `Claude`（经由 Claude Code，用你的账号）或 `OpenAI-compatible`（见下文） |
 | **Provider URL** | `http://localhost:11434/v1` | 选 `OpenAI-compatible` 时：API 地址，以 `/v1` 结尾 |
 | **Provider API key** | 空 | 选 `OpenAI-compatible` 时：服务的 API key（本地 Ollama 不需要）。以明文保存在 `settings.json` |

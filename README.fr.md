@@ -43,7 +43,7 @@ Ouvrez `/config` et cherchez **Lingo** :
 | **Suggest fixes while typing** | `true` | Si votre brouillon est déjà dans la langue que vous apprenez, propose une version plus naturelle au-dessus de la zone de saisie ; **Use** la place dans la zone; explications dans votre langue maternelle |
 | **Translate my prompts** | `true` | Affiche une traduction sous chaque prompt que vous envoyez |
 | **Translate Claude's replies** | `true` | Affiche une traduction sous chacune des réponses textuelles de Claude |
-| **Fold translations** | `true` | Chaque traduction commence repliée en `▸ Translate` : rien n'est traduit, ni facturé, tant que vous ne l'ouvrez pas. Désactivez pour traduire chaque message dès qu'il apparaît |
+| **Fold translations** | `true` | Chaque traduction commence repliée en `▸ Translate` : rien n'est traduit, ni facturé, tant que vous ne l'ouvrez pas. Désactivez pour traduire les prompts à l'envoi et les réponses une fois par tour (la réponse finale) |
 | **Provider** | `Claude` | `Claude` (via Claude Code, votre compte) ou `OpenAI-compatible` (voir plus bas) |
 | **Provider URL** | `http://localhost:11434/v1` | Avec `OpenAI-compatible` : la base de l'API, terminée par `/v1` |
 | **Provider API key** | vide | Avec `OpenAI-compatible` : la clé du service (aucune pour Ollama en local). Enregistrée en clair dans `settings.json` |

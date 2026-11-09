@@ -43,7 +43,7 @@ Open `/config` and look for **Lingo**:
 | **Suggest fixes while typing** | `true` | When your draft is already in the language you're learning, suggest a more natural version above the prompt box; **Use** puts it in the box; explained in your native language |
 | **Translate my prompts** | `true` | Show a translation under each prompt you send |
 | **Translate Claude's replies** | `true` | Show a translation under each of Claude's text replies |
-| **Fold translations** | `true` | Each translation starts folded as `▸ Translate`: nothing is translated, or paid for, until you open it. Turn off to translate every message as it appears |
+| **Fold translations** | `true` | Each translation starts folded as `▸ Translate`: nothing is translated, or paid for, until you open it. Turn off to translate prompts as they are sent and replies once per turn (the final reply) |
 | **Provider** | `Claude` | `Claude` (through Claude Code, your account) or `OpenAI-compatible` (see below) |
 | **Provider URL** | `http://localhost:11434/v1` | With `OpenAI-compatible`: the API base, ending in `/v1` |
 | **Provider API key** | empty | With `OpenAI-compatible`: the provider's key (none for a local Ollama). Stored in plain text in `settings.json` |
