@@ -147,6 +147,26 @@ export function worthPreview(text: string): boolean {
   return c.han + c.kana + c.hangul >= 4 || c.latin + c.cyrillic >= 12
 }
 
+/**
+ * Whether a draft is mostly code (a stack trace, JSON, shell lines): not worth a model call.
+ * True when over 30% of its words look like code (one of `{}[];=<>\`$`, `::`, `->`, or a
+ * call shape like `foo(`; paths, file names and plain parentheses do not count),
+ * or when letters are under half of the non-space characters.
+ * Each CJK character counts as one plain word, so a CJK sentence is never one "word".
+ */
+export function looksLikeCode(text: string): boolean {
+  const chars = text.replace(/\s/g, '')
+  if (!chars) return false
+  if ((chars.match(/\p{L}/gu) ?? []).length * 2 < chars.length) return true
+  const cjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu
+  const plain = (text.match(cjk) ?? []).length
+  const words = text.replace(cjk, ' ').split(/\s+/).filter(Boolean)
+  const code = words.filter(
+    (w) => /[{}[\];=<>\\`$]|::|->|\w\(/.test(w),
+  ).length
+  return code / (words.length + plain) > 0.3
+}
+
 /** A slash command or a shell line (`/…`, `!…`): not prose to translate or polish. */
 export function isCommand(text: string): boolean {
   return /^\s*[/!]/.test(text)

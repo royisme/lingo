@@ -10,6 +10,7 @@ import {
   hasChip,
   hash,
   isCommand,
+  looksLikeCode,
   plain,
   prose,
   shield,
@@ -914,6 +915,31 @@ test('a draft too short to be worth it gets no preview', AUTO, async ($, on) => 
   await clock.advance(1600)
   await clock.settle()
   expect(asked.length).toBe(1)
+})
+
+test('looksLikeCode flags mostly-code drafts and spares prose', () => {
+  expect(looksLikeCode('const x = foo(bar); return x;')).toBe(true)
+  expect(looksLikeCode('{"name": "lingo", "version": [1, 2]}')).toBe(true)
+  expect(looksLikeCode('at Object.<anonymous> (/app/x.js:10:5)')).toBe(true)
+  expect(looksLikeCode('please check src/auth.ts for the bug in the login flow')).toBe(false)
+  expect(looksLikeCode('rename foo.ts to bar.ts')).toBe(false)
+  expect(looksLikeCode('Restart it (please)')).toBe(false)
+  expect(looksLikeCode('check src/a.ts and src/b.ts for the race')).toBe(false)
+  expect(looksLikeCode('帮我看一下登录超时的问题')).toBe(false)
+  expect(looksLikeCode('请检查 getUserById() 这个函数为什么返回空')).toBe(false)
+})
+
+test('a code-like draft gets no model call', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const box = 'const value = compute(input); return value.map((x) => x + 1);'
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const asked = answer(on, 'Whatever')
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  await clock.settle()
+  expect(asked.length).toBe(0)
 })
 
 test('a row that failed on a rate limit (in an earlier load) is tried once more by itself', AUTO, async ($, on) => {

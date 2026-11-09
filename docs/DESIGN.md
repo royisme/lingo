@@ -90,6 +90,7 @@ Languages are listed by their own names, never translated.
 | Property | Value |
 | --- | --- |
 | Trigger | Typing pause of **1.5 s** (`prompt.edit` / `prompt.change`); every edit or caret move restarts the wait, so an IME pause between words does not fire it. A draft under 4 CJK characters or 12 letters is not previewed |
+| Code-like drafts | Not previewed or polished (no model call): over 30% of the words look like code (contain one of `{}[];=<>\`$`, `::`, `->`, or a call shape such as `foo(`; paths, file names and plain parentheses do not count), or letters are under half of the non-space characters. CJK characters count as plain words |
 | Shown when | Preview is on, the draft is not in the target language, no survey is up |
 | While re-translating | Previous text stays, dimmed |
 | Cleared | On submit, on a cleared box, when the draft becomes target-language |

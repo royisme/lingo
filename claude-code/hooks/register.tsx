@@ -13,6 +13,7 @@ import {
   hasChip,
   hash,
   isCommand,
+  looksLikeCode,
   plain,
   polishPrompt,
   shield,
@@ -606,7 +607,7 @@ type PreviewMode = 'translate' | 'ask' | 'polish' | 'either'
  * language), or let the model tell the two apart (`ask` / `either`, same script, unsure).
  */
 function previewMode(src: string, target: Language): PreviewMode | undefined {
-  if (isCommand(src) || !worthPreview(src)) return undefined
+  if (isCommand(src) || !worthPreview(src) || looksLikeCode(src)) return undefined
   switch (classify(src, target)) {
     case 'other':
       return settings.preview ? 'translate' : undefined

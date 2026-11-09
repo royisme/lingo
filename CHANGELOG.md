@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.3.3] - 2026-11-09
+
+### Changed
+- **Code-like drafts are not previewed**: a draft that is mostly code (a stack trace, JSON, shell lines) gets no preview and no polish call, so it costs no model request. Glosses under sent messages are unchanged.
+
 ## [0.3.2] - 2026-11-09
 
 ### Fixed
