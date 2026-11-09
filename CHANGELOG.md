@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.4.3] - 2026-11-09
+
+### Added
+- **Use on a translation**: when the preview band translates a draft, `u: Use` puts the translation in the prompt box, so you send (and Claude answers in) the target language. Code, commands, mentions and URLs come back exactly as written. Not offered when a marker was lost, the translation was cut, the draft holds a pasted chip, or the preview came from the cache. The filled text is not previewed or polished again.
+
 ## [0.4.2] - 2026-11-09
 
 ### Fixed

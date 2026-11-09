@@ -39,7 +39,7 @@ Terminal, Desktop, VS Code 및 Mobile에서 모두 작동합니다.
 | --- | --- | --- |
 | **Target language** | `English` | `English`, `Français`, `Español`, `Deutsch`, `Português`, `日本語`, `한국어`, `简体中文`, `繁體中文`, `Русский`, `Tiếng Việt`, 또는 `Off` |
 | **Native language** | `简体中文` | 모국어: 설명과 단어 메모를 이 언어로 씁니다. 선택지는 Target language와 같습니다(`Off` 없음) |
-| **Preview while typing** | `true` | 입력 중 잠시 멈추면 프롬프트 입력창 위에 실시간 번역 미리보기를 표시합니다; 설명은 모국어로 표시합니다 |
+| **Preview while typing** | `true` | 입력 중 잠시 멈추면 프롬프트 입력창 위에 실시간 번역 미리보기를 표시합니다; 설명은 모국어로 표시합니다. **Use**(또는 `u`)를 누르면 번역이 입력창에 들어갑니다 |
 | **Suggest fixes while typing** | `true` | 초안이 이미 배우는 언어로 쓰여 있으면 프롬프트 입력창 위에 더 자연스러운 표현을 제안합니다. **Use**를 누르면 초안을 바꿉니다; 설명은 모국어로 표시합니다 |
 | **Translate my prompts** | `true` | 전송한 각 프롬프트 아래에 번역을 표시합니다 |
 | **Translate Claude's replies** | `true` | Claude의 각 텍스트 답변 아래에 번역을 표시합니다 |

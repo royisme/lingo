@@ -417,16 +417,19 @@ async function previewTranslate($: EngineInterface, text: string, target: Langua
   if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing }
   const out = unwrapAnswer(a.text)
   const cut = a.cut ? ' …' : '' // stopped at the cap
+  // What Use puts in the box: the translation with code, commands and mentions as written, never a cut one.
+  const replacement = (raw: string) => (a.cut || hasChip(text) ? undefined : unshieldExact(raw, sent.kept))
   const f = parseFeedback(out)
   if (!f) {
     if (allowSame && out === SAME) return { status: 'same', text: '' }
-    return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) + cut }
+    return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) + cut, fix: replacement(out) }
   }
   if (f.mode === 'same' && allowSame) return { status: 'same', text: '' }
   if (f.mode !== 'translate') return { status: 'error', text: '', why: 'unexpected reply', passing: false }
   return {
     status: 'done',
     text: plain(unshieldForDisplay(f.text, sent.kept)) + cut,
+    fix: replacement(f.text),
     words: f.words.map(w => ({ word: unshieldForDisplay(w.word, sent.kept), note: w.note })),
   }
 }
@@ -773,7 +776,7 @@ function queuePreview($: EngineInterface) {
   previewTimer = $.clock.after(PREVIEW_DELAY_MS, () => void runPreview($))
 }
 
-/** Puts the better version in the prompt box, code, commands and mentions as written; it is not checked again. */
+/** Puts the better version or the translation in the prompt box, code, commands and mentions as written; it is not checked again. */
 async function useFix($: EngineInterface, text: string) {
   previewTimer?.cancel()
   await $.state.set(DRAFT, { src: text.trim(), status: 'same', text: '', kind: 'polish' } satisfies Draft)
@@ -930,7 +933,7 @@ export const register: Register = (on, options) => {
     if (polishing && (d.status === 'error' || (d.status === 'pending' && !d.text))) return next(e)
 
     const { Box, Button, Text } = $.ui.resolve(e)
-    const whole = polishing && d.status === 'fix' ? d.fix : undefined
+    const whole = d.status === 'fix' || d.status === 'done' ? d.fix : undefined
     // Detail rows under the first, dim: what was wrong for a fix, the words to learn for a translation.
     const details: string[] = []
     if (d.status === 'fix' || d.status === 'done' || d.status === 'pending') {

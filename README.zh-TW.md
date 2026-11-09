@@ -39,7 +39,7 @@ claude plugin install lingo --marketplace royisme/lingo
 | --- | --- | --- |
 | **Target language** | `English` | `English`、`Français`、`Español`、`Deutsch`、`Português`、`日本語`、`한국어`、`简体中文`、`繁體中文`、`Русский`、`Tiếng Việt` 或 `Off` |
 | **Native language** | `简体中文` | 你的母語：講解和詞語註解用它來寫。選項同 Target language，但沒有 `Off` |
-| **Preview while typing** | `true` | 輸入停頓片刻後，在輸入框上方即時顯示草稿譯文，並用母語講解 |
+| **Preview while typing** | `true` | 輸入停頓片刻後，在輸入框上方即時顯示草稿譯文，並用母語講解；按 **Use**（或 `u`）把譯文填入輸入框 |
 | **Suggest fixes while typing** | `true` | 草稿已經是你在學的語言時，在輸入框上方給出更自然的寫法；點 **Use** 直接取代草稿，並用母語講解 |
 | **Translate my prompts** | `true` | 在你發送的每則提問下方顯示譯文 |
 | **Translate Claude's replies** | `true` | 在 Claude 的每則文字回覆下方顯示譯文 |

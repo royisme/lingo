@@ -919,6 +919,93 @@ test('Use puts back commands and mentions as written, and is withheld when the m
   await again.unmount()
 })
 
+/** Mounts a Chinese draft whose preview the model answers with `reply`; returns the band and the fills. */
+async function previewChinese($: any, on: any, box: string, reply: string, usage: object = USAGE) {
+  const clock = mock.clock(on)
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  const calls: string[] = []
+  on('model.complete', (_: any, e: any) => {
+    calls.push(e.prompt)
+    return { value: { isAnswered: true, text: reply, usage } }
+  })
+  const fills: string[] = []
+  on('prompt.fill', (_: any, e: any) => {
+    fills.push(e.text)
+    box = e.text
+    return { isFilled: true }
+  })
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+  await ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  const ui = await $.ui.mount(BAND)
+  return { clock, ui, calls, fills, change: () => ($.prompt as any).change({ text: box, cursor: box.length, origin: { kind: 'engine' } }) }
+}
+
+const TRANSLATE = (text: string) => JSON.stringify({ mode: 'translate', text, words: [{ word: 'login', note: '登录' }] })
+
+test('a draft in another language shows a translation, and Use puts it in the box', AUTO, async ($, on) => {
+  const { clock, ui, calls, fills, change } = await previewChinese($, on, '帮我看看为什么登录接口超时', TRANSLATE('Help me see why the login API times out.'))
+  expect(calls.length).toBe(1)
+  expect((await ui.find({ type: 'Text', text: /^Preview$/ }))?.text).toBe('Preview')
+  expect((await ui.find({ type: 'Text', text: /times out/ }))?.text).toBe('Help me see why the login API times out.')
+  await ui.press({ key: 'lingo-use' })
+  await clock.settle()
+  expect(fills).toEqual(['Help me see why the login API times out.'])
+  expect(await ui.find({ type: 'Text', text: /Preview/ })).toBeUndefined()
+
+  // The box now holds target-language text: the change it raises asks nothing more.
+  await change()
+  await clock.advance(1600)
+  expect(calls.length).toBe(1)
+  await ui.unmount()
+})
+
+test('Use on a translation puts back commands and mentions as written', AUTO, async ($, on) => {
+  const { clock, ui, calls, fills } = await previewChinese(
+    $,
+    on,
+    '先用 /code-review 看一下 @src/auth.ts',
+    TRANSLATE('First run ⟦1⟧ on ⟦2⟧.'),
+  )
+  expect(calls[0]).toBe('<<<\n先用 ⟦1⟧ 看一下 ⟦2⟧\n>>>')
+  expect((await ui.find({ type: 'Text', text: /First run/ }))?.text).toBe('First run /code-review on @src/auth.ts.')
+  await ui.press({ key: 'lingo-use' })
+  await clock.settle()
+  expect(fills).toEqual(['First run /code-review on @src/auth.ts.'])
+  await ui.unmount()
+})
+
+test('no Use on a translation when a marker is dropped, the answer is cut, or a chip is in the draft', AUTO, async ($, on) => {
+  const dropped = await previewChinese($, on, '先用 /code-review 看一下 @src/auth.ts', TRANSLATE('First run ⟦1⟧.'))
+  expect((await dropped.ui.find({ type: 'Text', text: /First run/ }))?.text).toBe('First run /code-review.')
+  expect(await dropped.ui.find({ key: 'lingo-use' })).toBeUndefined()
+  await dropped.ui.unmount()
+})
+
+test('no Use on a translation that was cut at the token cap', AUTO, async ($, on) => {
+  const cut = await previewChinese($, on, '帮我看看为什么登录接口超时', TRANSLATE('Help me see why'), { ...USAGE, output_tokens: 4096 })
+  expect((await cut.ui.find({ type: 'Text', text: /Help me see why/ }))?.text).toBe('Help me see why …')
+  expect(await cut.ui.find({ key: 'lingo-use' })).toBeUndefined()
+  await cut.ui.unmount()
+})
+
+test('no Use on a translation of a draft with a pasted chip', AUTO, async ($, on) => {
+  const chip = await previewChinese($, on, '[Pasted text #1 +20 lines] 帮我看看为什么超时', TRANSLATE('Help me see why it times out.'))
+  expect((await chip.ui.find({ type: 'Text', text: /times out/ }))?.text).toBe('Help me see why it times out.')
+  expect(await chip.ui.find({ key: 'lingo-use' })).toBeUndefined()
+  await chip.ui.unmount()
+})
+
+test('a plain-text translation (not JSON) also offers Use', AUTO, async ($, on) => {
+  const { clock, ui, fills } = await previewChinese($, on, '帮我看看为什么登录接口超时', 'Help me see why the login API times out.')
+  expect((await ui.find({ type: 'Text', text: /^Preview$/ }))?.text).toBe('Preview')
+  await ui.press({ key: 'lingo-use' })
+  await clock.settle()
+  expect(fills).toEqual(['Help me see why the login API times out.'])
+  await ui.unmount()
+})
+
 test('a rate limit is retried by itself after a cooldown', AUTO, async ($, on) => {
   const clock = mock.clock(on)
   let calls = 0

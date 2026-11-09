@@ -39,7 +39,7 @@ Abre `/config` y busca **Lingo**:
 | --- | --- | --- |
 | **Target language** | `English` | `English`, `Français`, `Español`, `Deutsch`, `Português`, `日本語`, `한국어`, `简体中文`, `繁體中文`, `Русский`, `Tiếng Việt` u `Off` |
 | **Native language** | `简体中文` | Tu lengua materna: las explicaciones y las notas de vocabulario se escriben en ella. Mismas opciones que Target language, sin `Off` |
-| **Preview while typing** | `true` | Muestra una traducción en vivo sobre el cuadro de texto tras una breve pausa; explicaciones en tu lengua materna |
+| **Preview while typing** | `true` | Muestra una traducción en vivo sobre el cuadro de texto tras una breve pausa; explicaciones en tu lengua materna. **Use** (o `u`) pone la traducción en el cuadro |
 | **Suggest fixes while typing** | `true` | Si tu borrador ya está en el idioma que aprendes, sugiere una versión más natural sobre el cuadro de texto; **Use** la coloca en el cuadro; explicaciones en tu lengua materna |
 | **Translate my prompts** | `true` | Muestra una traducción debajo de cada prompt que envías |
 | **Translate Claude's replies** | `true` | Muestra una traducción debajo de cada respuesta de texto de Claude |
