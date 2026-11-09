@@ -41,6 +41,8 @@ declare module 'claude-code' {
       limited: boolean
       /** Whether a folded translation was opened, by message and gloss (`requestId:glossId`). */
       shown: StateFamily<boolean>
+      /** Words saved as flashcards from a sent prompt, by gloss id (the mark `+N words` on its row). */
+      saved: StateFamily<number>
     }
   }
 }

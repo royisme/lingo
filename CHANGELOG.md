@@ -2,6 +2,11 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.4.5] - 2026-11-09
+
+### Added
+- **Words saved as flashcards**: the key words of a translation preview (the ones listed under it) are saved to a deck per target language when you send that draft, or when you press `u: Use` on it, so one-key translating saves them too. Nothing is saved for drafts you abandon, for polish suggestions, or before the preview has settled; a word already in the deck is kept as it is. No extra model call. The sent prompt's row shows a dim `· +N words`, and the first save raises one toast. New `/config` row `Lingo · Save words as flashcards` (on by default); turning it off stops saving only.
+
 ## [0.4.4] - 2026-11-09
 
 ### Fixed

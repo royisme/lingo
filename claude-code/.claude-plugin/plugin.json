@@ -1,6 +1,6 @@
 {
   "name": "lingo",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Learn a language while you code: shows a translation under your prompts and Claude's replies, and a live preview while you type. Translates with Claude or any OpenAI-compatible model (Ollama, OpenRouter, ...).",
   "author": {
     "name": "Roy",
@@ -89,6 +89,12 @@
       "type": "boolean",
       "title": "Lingo · Fold translations",
       "description": "Start each translation folded: nothing is translated (or paid for) until you open it with ▸ Translate, or /lingo show for the latest reply. Turn off to translate every message as it appears.",
+      "default": true
+    },
+    "saveWords": {
+      "type": "boolean",
+      "title": "Lingo · Save words as flashcards",
+      "description": "Save the key words of a previewed draft you send as flashcards. Review them with /lingo review.",
       "default": true
     },
     "provider": {

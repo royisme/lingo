@@ -1721,3 +1721,225 @@ test('the message goes to the model between <<< and >>>, declared not to be inst
   expect((await ui.find({ type: 'Text', text: /login timeout/ }))?.text).toBe('Look into the login timeout.')
   await ui.unmount()
 })
+
+// ---- flashcards: capture, setting, mark -------------------------------------
+
+const SRC = '帮我看看为什么登录接口超时'
+const TRANSLATION = 'Help me see why the login API times out.'
+const CARD_REPLY = (words: { word: string; note: string }[] = [
+  { word: 'login', note: '登录' },
+  { word: 'times out', note: '超时' },
+]) => JSON.stringify({ mode: 'translate', text: TRANSLATION, words })
+
+function memStore(on: any, failSets = false) {
+  const store = new Map<string, unknown>()
+  on('store.get', (_: any, e: any) => ({ value: store.get(e.key) }))
+  on('store.set', (_: any, e: any) => {
+    if (failSets && e.key.startsWith('cards')) throw new Error('store full')
+    store.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.delete', (_: any, e: any) => {
+    store.delete(e.key)
+    return { value: undefined }
+  })
+  return store
+}
+
+function toasts(on: any) {
+  const list: string[] = []
+  on('ui.toast', (_: any, e: any) => {
+    list.push(e.text)
+    return { value: undefined }
+  })
+  return list
+}
+
+/** A previewed draft (`box`) in the prompt box; returns the band and the model's prompts. */
+async function previewed($: any, on: any, box: { text: string }, first: string) {
+  const model = { reply: first }
+  const sent: string[] = []
+  const clock = mock.clock(on, { now: 1000 })
+  on('prompt.read', () => ({ value: { text: box.text, cursor: box.text.length } }))
+  const calls: string[] = []
+  on('model.complete', (_: any, e: any) => {
+    calls.push(e.prompt)
+    return { value: { isAnswered: true, text: model.reply, usage: USAGE } }
+  })
+  on('prompt.fill', (_: any, e: any) => {
+    box.text = e.text
+    return { isFilled: true }
+  })
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  on('prompt.submit', (_: any, e: any) => {
+    sent.push(e.text)
+    return { text: e.text }
+  })
+  engineRow(on)
+  await ($.prompt as any).change({ text: box.text, cursor: box.text.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  return { clock, calls, model, sent }
+}
+
+const send = async ($: any, clock: any, text: string, origin: object = { kind: 'composer' }) => {
+  await ($.prompt as any).submit({ text, origin })
+  await clock.settle()
+}
+
+test('sending a previewed draft saves its words under cards1:en, with the translation as context', AUTO, async ($, on) => {
+  const store = memStore(on)
+  const told = toasts(on)
+  const box = { text: SRC }
+  const { clock, calls } = await previewed($, on, box, CARD_REPLY())
+  await send($, clock, SRC + ' ')
+  const deck = store.get('cards1:en') as any[]
+  expect(deck.map(c => c.word)).toEqual(['login', 'times out'])
+  expect(deck[0]).toMatchObject({ note: '登录', ctx: TRANSLATION, native: 'zh-CN', reps: 0, ease: 2.5 })
+  expect(calls.length).toBe(1) // no model call for cards
+  expect(told).toEqual(['Lingo: saved 2 words as flashcards · /lingo review'])
+  expect(store.get('cards-told')).toBe(true)
+
+  // The sent prompt's row carries the mark.
+  const ui = await $.ui.mount(userRow(SRC, 'desktop', 'm-mark'))
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /^· \+2 words$/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('an abandoned draft, a draft sent before its preview settled, or an edited one saves nothing', AUTO, async ($, on) => {
+  const store = memStore(on)
+  const box = { text: SRC }
+  const { clock } = await previewed($, on, box, CARD_REPLY())
+  await send($, clock, '先别改代码') // another text than the previewed one
+  expect(store.has('cards1:en')).toBe(false)
+  await send($, clock, SRC) // the draft was cleared by the first send, so there is no preview left
+  expect(store.has('cards1:en')).toBe(false)
+  await clock.advance(5000) // the glosses of the two sent prompts finish
+})
+
+test('sending before the preview settles saves nothing', AUTO, async ($, on) => {
+  const store = memStore(on)
+  const clock = mock.clock(on, { now: 1000 })
+  const box = { text: SRC }
+  on('prompt.read', () => ({ value: { text: box.text, cursor: box.text.length } }))
+  let finish: () => void = () => {}
+  on('model.complete', () => new Promise(res => (finish = () => res({ value: { isAnswered: true, text: CARD_REPLY(), usage: USAGE } }))))
+  on('prompt.change', (_: any, e: any) => ({ text: e.text }))
+  on('prompt.submit', (_: any, e: any) => ({ text: e.text }))
+  engineRow(on)
+  await ($.prompt as any).change({ text: box.text, cursor: 3, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  await ($.prompt as any).submit({ text: SRC, origin: { kind: 'composer' } })
+  await clock.advance(10)
+  expect(store.has('cards1:en')).toBe(false)
+  finish()
+  await clock.settle()
+  expect(store.has('cards1:en')).toBe(false) // the preview answering later changes nothing: the draft was sent
+})
+
+test('saveWords off saves nothing', { options: { foldTranslations: false, saveWords: false } } as any, async ($, on) => {
+  const store = memStore(on)
+  const box = { text: SRC }
+  const { clock } = await previewed($, on, box, CARD_REPLY())
+  await send($, clock, SRC)
+  expect(store.has('cards1:en')).toBe(false)
+  expect(store.has('cards-told')).toBe(false)
+})
+
+test('the same word twice is one card, no mark when all were duplicates, and the toast is raised once', AUTO, async ($, on) => {
+  const store = memStore(on)
+  const told = toasts(on)
+  const box = { text: SRC }
+  const { clock, model } = await previewed($, on, box, CARD_REPLY())
+  await send($, clock, SRC)
+  expect((store.get('cards1:en') as any[]).length).toBe(2)
+
+  // A second draft with a new text and the same words: no new card, no mark; with one new word: one card, "+1 word".
+  const other = '帮我看看登录接口为什么超时了'
+  box.text = other
+  await ($.prompt as any).change({ text: other, cursor: other.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  await send($, clock, other)
+  expect((store.get('cards1:en') as any[]).length).toBe(2)
+  const ui = await $.ui.mount(userRow(other, 'desktop', 'm-dup'))
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /\+\d word/ })).toBeUndefined()
+  await ui.unmount()
+
+  const third = '帮我看看登录接口到底为什么超时'
+  box.text = third
+  model.reply = CARD_REPLY([{ word: 'login', note: '登录' }, { word: 'endpoint', note: '接口' }])
+  await ($.prompt as any).change({ text: third, cursor: third.length, origin: { kind: 'engine' } })
+  await clock.advance(1600)
+  await send($, clock, third)
+  expect((store.get('cards1:en') as any[]).length).toBe(3)
+  const again = await $.ui.mount(userRow(third, 'desktop', 'm-one'))
+  await clock.settle()
+  expect(await again.find({ type: 'Text', text: /^· \+1 word$/ })).toBeDefined()
+  await again.unmount()
+  expect(told.length).toBe(1)
+})
+
+test('a rejected deck write lets the prompt through and draws no mark', AUTO, async ($, on) => {
+  const store = memStore(on, true)
+  const told = toasts(on)
+  const logged: string[] = []
+  on('ui.log', (_: any, e: any) => {
+    logged.push(e.text)
+    return { value: undefined }
+  })
+  const box = { text: SRC }
+  const { clock, sent } = await previewed($, on, box, CARD_REPLY())
+  await send($, clock, SRC)
+  expect(sent).toEqual([SRC])
+  expect(store.has('cards1:en')).toBe(false)
+  expect(told).toEqual([])
+  const ui = await $.ui.mount(userRow(SRC, 'desktop', 'm-fail'))
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /\+\d/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('Use on a translation saves its words at once; sending the used text adds nothing and no second mark', AUTO, async ($, on) => {
+  const store = memStore(on)
+  const told = toasts(on)
+  const box = { text: SRC }
+  const { clock, calls } = await previewed($, on, box, CARD_REPLY())
+  const band = await $.ui.mount({ plugin: 'lingo', surface: 'desktop', component: 'AbovePrompt', requestId: 'band-cards', props: { maxRows: 4, hasSurvey: false } } as any)
+  await band.press({ key: 'lingo-use' })
+  await clock.settle()
+  expect(box.text).toBe(TRANSLATION)
+  const deck = store.get('cards1:en') as any[]
+  expect(deck.map(c => c.word)).toEqual(['login', 'times out'])
+  expect(told.length).toBe(1)
+  await band.unmount()
+
+  // Sending the used text: the draft is no longer a translation preview, so nothing more is captured.
+  await send($, clock, TRANSLATION)
+  expect(store.get('cards1:en')).toEqual(deck)
+  expect(told.length).toBe(1)
+  expect(calls.length).toBe(1)
+
+  // The mark belongs to the sent text (the translation), drawn once.
+  const ui = await $.ui.mount(userRow(TRANSLATION, 'desktop', 'm-used'))
+  await clock.settle()
+  expect((await ui.findAll({ type: 'Text', text: /^· \+2 words$/ })).length).toBe(1)
+  await ui.unmount()
+  // The source text's row (Use was pressed, the source was never sent) has no mark.
+  const src = await $.ui.mount(userRow(SRC, 'desktop', 'm-src'))
+  await clock.settle()
+  expect(await src.find({ type: 'Text', text: /\+\d/ })).toBeUndefined()
+  await src.unmount()
+})
+
+test('Use on a polish (Better) band captures nothing', AUTO, async ($, on) => {
+  const store = memStore(on)
+  const box = { text: 'please use the login for check the token' }
+  const { clock } = await previewed($, on, box, `${FIX} Please use the login to check the token.`)
+  const band = await $.ui.mount({ plugin: 'lingo', surface: 'desktop', component: 'AbovePrompt', requestId: 'band-polish', props: { maxRows: 4, hasSurvey: false } } as any)
+  await band.press({ key: 'lingo-use' })
+  await clock.settle()
+  expect(box.text).toBe('Please use the login to check the token.')
+  expect(store.has('cards1:en')).toBe(false)
+  await band.unmount()
+})

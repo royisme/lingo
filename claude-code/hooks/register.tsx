@@ -27,6 +27,7 @@ import {
   worthPreview,
 } from './lang'
 import type { Item, Language, Word } from './lang'
+import { addWords, readDeck } from './cards'
 import { chatRequest, hostOf, readChat } from './openai'
 import type { Attempt } from './openai'
 
@@ -49,6 +50,8 @@ type Settings = {
   fold: boolean
   prompts: boolean
   replies: boolean
+  /** Save the key words of a translation preview as flashcards when it is sent or used. */
+  saveWords: boolean
 }
 
 const NATIVE_DEFAULT = findLanguage('简体中文')!
@@ -71,6 +74,7 @@ function readSettings(options: PluginOptions): Settings {
     fold: bool(options.foldTranslations),
     prompts: bool(options.translatePrompts),
     replies: bool(options.translateReplies),
+    saveWords: bool(options.saveWords),
   }
 }
 
@@ -84,6 +88,8 @@ const MENU = { plugin: 'lingo', key: 'menu' } as const
 const HIDDEN = { plugin: 'lingo', key: 'hidden' } as const
 const LIMITED = { plugin: 'lingo', key: 'limited' } as const
 const SHOWN = { plugin: 'lingo', key: 'shown' } as const
+/** Words saved as flashcards from a sent prompt, by gloss id: the dim `· +N words` on its row. */
+const SAVED = { plugin: 'lingo', key: 'saved' } as const
 const draft = atom(DRAFT, null)
 
 const ACCENT = 'suggestion'
@@ -435,6 +441,41 @@ function keepGloss($: EngineInterface, id: string, gloss: Gloss) {
     .catch(() => undefined) // a failing store only costs a translation later
 }
 
+/** The store key that tells the one-time toast was raised. */
+const TOLD_KEY = 'cards-told'
+const deckKey = (target: Language) => `cards1:${target.code}`
+const savedLabel = (n: number) => `+${n} ${n === 1 ? 'word' : 'words'}`
+
+/**
+ * Saves a translation's key words as flashcards in the background (a prompt is never delayed, a failing
+ * store never blocks one), on the translation cache's chain and through `storeSet`. Only after the deck
+ * was written, and only when a card was created, the mark is set for the gloss id and, once ever, a toast
+ * says where the cards went. A failed write: one debug line, no mark.
+ */
+function captureWords($: EngineInterface, target: Language, words: Word[], ctx: string, id: string) {
+  const job = async () => {
+    try {
+      const key = deckKey(target)
+      const old = readDeck(await $.store.get(key))
+      const { deck, added } = addWords(old, words, ctx, settings.native.code, await $.clock.now())
+      if (added === 0 && JSON.stringify(deck) === JSON.stringify(old)) return
+      if (!(await storeSet($, key, deck))) {
+        $.ui.log('Lingo: could not save words as flashcards', { to: 'debug' })
+        return
+      }
+      if (added === 0) return
+      await $.state.set({ ...SAVED, id }, added)
+      if (!(await $.store.get(TOLD_KEY))) {
+        await storeSet($, TOLD_KEY, true)
+        $.ui.toast(`Lingo: saved ${savedLabel(added).slice(1)} as flashcards · /lingo review`)
+      }
+    } catch (err) {
+      $.ui.log(`Lingo: could not save words as flashcards (${err instanceof Error ? err.message : String(err)})`, { to: 'debug' })
+    }
+  }
+  storeChain = storeChain.then(job).catch(() => undefined)
+}
+
 async function translate($: EngineInterface, text: string, target: Language, allowSame: boolean) {
   const sent = shield(text)
   const a = await ask($, systemPrompt(target, allowSame), wrapForModel(sent.text))
@@ -601,14 +642,35 @@ async function openSettings($: EngineInterface, menuId: string) {
 
 // ---- drawing ---------------------------------------------------------------
 
+/** `· +2 words` for a prompt whose key words were saved as flashcards; read-only (it is drawn in a render). */
+async function savedMark($: EngineInterface, id: string): Promise<string | undefined> {
+  const n = (await $.state.get({ ...SAVED, id })).value ?? 0
+  return n > 0 ? `· ${savedLabel(n)}` : undefined
+}
+
+/** A row that draws no gloss (a prompt already in the target, as after Use) still carries the mark. */
+async function savedRow($: EngineInterface, e: RenderInput, row: RenderElement, id: string): Promise<RenderElement> {
+  const mark = await savedMark($, id)
+  if (!mark) return row
+  const { Box, Text } = $.ui.resolve(e)
+  return (
+    <Box flexDirection="column">
+      {row}
+      <Box paddingLeft={2} marginTop={1}>
+        <Text dimColor>{mark}</Text>
+      </Box>
+    </Box>
+  )
+}
+
 /** The message row with a gloss under it: language tag + italic translation, and the tag's menu. */
 async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, text: string): Promise<RenderElement> {
   const target = settings.target
   if (!target) return row
-  const verdict = decide(text, target)
-  if (verdict === 'skip') return row
-
   const id = glossId(target, text)
+  const verdict = decide(text, target)
+  if (verdict === 'skip') return savedRow($, e, row, id)
+
   // One menu (and one fold) per gloss, so a row whose text changes never shows a stale one.
   const menuId = `${e.requestId}:${id}`
   const kept = (await $.state.get({ ...GLOSS, id })).value
@@ -624,13 +686,14 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
   if (shown && (!kept || (kept.status === 'pending' && !inFlight.has(id)) || retry)) schedule($, text, target)
   const value = retry ? undefined : kept
   // Already in the target: nothing to offer, unless the person opened it (then it says so).
-  if (value?.status === 'same' && !(settings.fold && shown)) return row
-  if ((await $.state.get({ ...HIDDEN, id })).value) return row
+  if (value?.status === 'same' && !(settings.fold && shown)) return savedRow($, e, row, id)
+  if ((await $.state.get({ ...HIDDEN, id })).value) return savedRow($, e, row, id)
   const isOpen = (await $.state.get({ ...MENU, id: menuId })).value ?? false
   const limited = value?.status === 'error' || value?.status === 'done' ? false : ((await $.state.get(LIMITED)).value ?? false)
 
   const { Box, Button, Text } = $.ui.resolve(e)
   const framed = e.surface !== 'terminal'
+  const mark = await savedMark($, id)
 
   const tag = (
     <Button key="lingo-tag" plain onPress={() => void toggleMenu($, menuId)}>
@@ -679,6 +742,7 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
           tag
         )}
         <Box flexShrink={1}>{body}</Box>
+        {mark && <Text dimColor>{mark}</Text>}
       </Box>
       {isOpen && (
         <Box flexDirection="column" gap={1} marginTop={1} paddingLeft={2}>
@@ -819,6 +883,13 @@ function queuePreview($: EngineInterface) {
 /** Puts the better version or the translation in the prompt box, code, commands and mentions as written; it is not checked again. */
 async function useFix($: EngineInterface, text: string) {
   previewTimer?.cancel()
+  // A translation's words are saved now: the text sent next is the translation, not this draft's source,
+  // so the submit rule would not see them. The draft turns to `same` below, which keeps submit from saving them again.
+  const d = (await $.state.get(DRAFT)).value
+  const target = settings.target
+  if (settings.saveWords && target && d?.status === 'done' && d.kind === 'translate' && d.words?.length) {
+    captureWords($, target, d.words, d.text, glossId(target, text))
+  }
   await $.state.set(DRAFT, { src: text.trim(), status: 'same', text: '', kind: 'polish' } satisfies Draft)
   await $.prompt.fill({ text })
 }
@@ -931,6 +1002,14 @@ export const register: Register = (on, options) => {
   on('prompt.submit', async ($, e, next) => {
     const target = settings.target
     if (target && settings.prompts && !settings.fold && !isCommand(e.text)) schedule($, e.text, target)
+    // The words of a previewed translation, when that very draft is sent (the mark goes on the sent prompt's row).
+    const d = (await $.state.get(DRAFT)).value
+    if (
+      settings.saveWords && target && e.origin?.kind === 'composer' && !isCommand(e.text) &&
+      d?.status === 'done' && d.words?.length && d.src === e.text.trim()
+    ) {
+      captureWords($, target, d.words, d.text, glossId(target, e.text))
+    }
     await clearPreview($)
     return next(e)
   }).catch(($, e, next) => next(e)) // never block a prompt over a translation
