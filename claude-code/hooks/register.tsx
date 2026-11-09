@@ -1,7 +1,7 @@
 import { atom, read } from 'claude-code'
 import type { EngineInterface, HttpInit, HttpResponse, PluginOptions, Register, RenderElement, RenderInput } from 'claude-code'
 
-import type { Draft, Gloss } from '../types'
+import type { Draft, Gloss, Review } from '../types'
 import {
   FIX,
   LANGUAGES,
@@ -26,8 +26,9 @@ import {
   wrapForModel,
   worthPreview,
 } from './lang'
-import type { Item, Language, Word } from './lang'
-import { addWords, deckStats, readDeck, removeWord } from './cards'
+import type { Code, Item, Language, Word } from './lang'
+import { addWords, deckStats, fmtInterval, pickSession, rate, readDeck, removeWord } from './cards'
+import type { Card, Grade } from './cards'
 import { chatRequest, hostOf, readChat } from './openai'
 import type { Attempt } from './openai'
 
@@ -90,6 +91,9 @@ const LIMITED = { plugin: 'lingo', key: 'limited' } as const
 const SHOWN = { plugin: 'lingo', key: 'shown' } as const
 /** Words saved as flashcards from a sent prompt, by gloss id: the dim `· +N words` on its row. */
 const SAVED = { plugin: 'lingo', key: 'saved' } as const
+/** The running flashcard review; the pane draws from it alone. */
+const REVIEW = { plugin: 'lingo', key: 'review' } as const
+const REVIEW_PANE = 'lingo-review'
 const draft = atom(DRAFT, null)
 
 const ACCENT = 'suggestion'
@@ -443,7 +447,8 @@ function keepGloss($: EngineInterface, id: string, gloss: Gloss) {
 
 /** The store key that tells the one-time toast was raised. */
 const TOLD_KEY = 'cards-told'
-const deckKey = (target: Language) => `cards1:${target.code}`
+const deckKeyFor = (code: Code) => `cards1:${code}`
+const deckKey = (target: Language) => deckKeyFor(target.code)
 const savedLabel = (n: number) => `+${n} ${n === 1 ? 'word' : 'words'}`
 
 /**
@@ -946,7 +951,7 @@ async function wordsReport($: EngineInterface): Promise<{ text: string }> {
   const latest = [...deck].sort((x, y) => y.added - x.added).slice(0, LATEST_WORDS).map(c => c.word)
   const more = deck.length > LATEST_WORDS ? ', …' : ''
   return {
-    text: `Lingo · ${target.code.toUpperCase()}: ${total} ${total === 1 ? 'word' : 'words'} · ${due} due · ${fresh} new. Latest: ${latest.join(', ')}${more} · /lingo review · /lingo forget <word>`,
+    text: `Lingo · ${target.tag}: ${total} ${total === 1 ? 'word' : 'words'} · ${due} due · ${fresh} new. Latest: ${latest.join(', ')}${more} · /lingo review · /lingo forget <word>`,
   }
 }
 
@@ -971,6 +976,105 @@ async function forgetWord($: EngineInterface, word: string): Promise<{ text: str
   }
 }
 
+// ---- review ----------------------------------------------------------------
+
+const tagOf = (code: Code) => findLanguage(code)?.tag ?? code.toUpperCase()
+
+/** `/lingo review`: builds the session, opens the pane and answers; the three cases without a pane answer in a line. */
+async function startReview($: EngineInterface): Promise<{ text: string }> {
+  const target = settings.target
+  if (!target) return { text: 'Lingo is off. Turn it on with /lingo en (or another language).' }
+  await storeChain
+  const deck = readDeck(await $.store.get(deckKey(target)))
+  if (deck.length === 0) {
+    return { text: 'Lingo: no words saved yet. Send a prompt in your own language after its preview shows; its key words are saved.' }
+  }
+  const now = await $.clock.now()
+  const queue = pickSession(deck, now)
+  if (queue.length === 0) {
+    const { total, nextDue } = deckStats(deck, now)
+    const next = nextDue === undefined ? '' : `; next one due in ${fmtInterval(nextDue - now)}`
+    return { text: `Lingo: nothing to review. ${total} ${total === 1 ? 'word' : 'words'} in ${target.tag}${next}.` }
+  }
+  await $.state.set(REVIEW, { target: target.code, queue, pos: 0, shown: false, rated: 0 })
+  await $.ui.open({ id: REVIEW_PANE, title: 'Lingo review', focus: true, closeOnEscape: true, rows: 8 })
+  return { text: `Lingo: reviewing ${queue.length} ${queue.length === 1 ? 'word' : 'words'}.` }
+}
+
+/** Shows the note of the current card; a press for a card no longer current changes nothing. */
+async function showAnswer($: EngineInterface, id: string) {
+  try {
+    const r = (await $.state.get(REVIEW)).value
+    if (!r || r.queue[r.pos]?.id !== id || r.shown) return
+    await $.state.set(REVIEW, { ...r, shown: true })
+    // `autoFocus` only places the ring when the pane takes the keys; after a redraw it falls to Again
+    await $.ui.focus({ requestId: REVIEW_PANE, key: 'lingo-card-3' })
+  } catch {
+    // a failing state only leaves the card as it was
+  }
+}
+
+/** What a review step did: `counted` for a rating, `again` the rated card to ask once more at the end. */
+type Step = { counted: boolean; again?: Card }
+
+/** Moves on after a card was rated or removed; the last card ends the review. */
+async function advance($: EngineInterface, r: NonNullable<Review>, step: Step) {
+  const rated = r.rated + (step.counted ? 1 : 0)
+  const queue = step.again ? [...r.queue, step.again] : r.queue
+  const pos = r.pos + 1
+  if (pos < queue.length) {
+    await $.state.set(REVIEW, { ...r, queue, pos, shown: false, rated })
+    await $.ui.focus({ requestId: REVIEW_PANE, key: 'lingo-card-show' })
+    return
+  }
+  await $.state.set(REVIEW, null)
+  await $.ui.close({ id: REVIEW_PANE })
+  const now = await $.clock.now()
+  const { nextDue } = deckStats(readDeck(await $.store.get(deckKeyFor(r.target))), now)
+  const tail = nextDue === undefined ? 'nothing else due' : `next due in ${fmtInterval(nextDue - now)}`
+  $.ui.toast(`Lingo: ${rated === 0 ? 'review finished' : `reviewed ${rated} ${rated === 1 ? 'word' : 'words'}`} · ${tail}`)
+}
+
+/** Runs a review step on the store chain, so two quick presses never interleave; only the current card counts. */
+function reviewStep($: EngineInterface, id: string, step: (r: NonNullable<Review>, card: Card) => Promise<Step>) {
+  const job = async () => {
+    try {
+      const r = (await $.state.get(REVIEW)).value
+      const card = r?.queue[r.pos]
+      if (!r || !card || card.id !== id) return
+      await advance($, r, await step(r, card))
+    } catch (err) {
+      $.ui.log(`Lingo: review step failed (${err instanceof Error ? err.message : String(err)})`, { to: 'debug' })
+    }
+  }
+  storeChain = storeChain.then(job).catch(() => undefined)
+}
+
+/** Rates the current card, writes it to the deck (if it is still there), and shows the next one. Again brings it back at the end. */
+function grade($: EngineInterface, id: string, g: Grade) {
+  reviewStep($, id, async (r, card) => {
+    const next = rate(card, g, await $.clock.now())
+    const key = deckKeyFor(r.target)
+    const deck = readDeck(await $.store.get(key))
+    if (deck.some(c => c.id === id) && !(await storeSet($, key, deck.map(c => (c.id === id ? next : c))))) {
+      $.ui.log('Lingo: could not save the rating', { to: 'debug' })
+    }
+    return g === 1 ? { counted: true, again: next } : { counted: true }
+  })
+}
+
+/** Deletes the current card from the deck and moves on without counting it. */
+function removeCard($: EngineInterface, id: string) {
+  reviewStep($, id, async r => {
+    const key = deckKeyFor(r.target)
+    const deck = readDeck(await $.store.get(key))
+    if (deck.some(c => c.id === id) && !(await storeSet($, key, deck.filter(c => c.id !== id)))) {
+      $.ui.log('Lingo: could not remove the card', { to: 'debug' })
+    }
+    return { counted: false }
+  })
+}
+
 // ---- hooks -----------------------------------------------------------------
 
 export const register: Register = (on, options) => {
@@ -992,6 +1096,7 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'lingo' }, async ($, e) => {
     const arg = String(e.args ?? '').trim()
     if (arg.toLowerCase() === 'show') return showLatest($)
+    if (arg.toLowerCase() === 'review') return startReview($)
     if (arg.toLowerCase() === 'words') return wordsReport($)
     const forget = /^forget(?:\s+([\s\S]*))?$/i.exec(arg)
     if (forget) return forgetWord($, (forget[1] ?? '').trim())
@@ -1056,6 +1161,58 @@ export const register: Register = (on, options) => {
     await clearPreview($)
     return next(e)
   }).catch(($, e, next) => next(e)) // never block a prompt over a translation
+
+  // The review pane: drawn from `$.state` alone (a render never writes state or the store).
+  on('ui.render', { component: 'Pane', requestId: REVIEW_PANE }, async ($, e) => {
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const r = (await $.state.get(REVIEW)).value
+    const card = r?.queue[r.pos]
+    if (!r || !card) return <Text dimColor>No review running · /lingo review</Text>
+    const grades: [Grade, string][] = [[1, 'Again'], [2, 'Hard'], [3, 'Good'], [4, 'Easy']]
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>
+          {r.pos + 1} / {r.queue.length} · {tagOf(r.target)}
+        </Text>
+        <Text color={ACCENT} bold>
+          {card.word}
+        </Text>
+        {card.ctx && (
+          <Text color={ACCENT} italic>
+            {card.ctx}
+          </Text>
+        )}
+        {!r.shown ? (
+          <Box marginTop={1}>
+            <Button key="lingo-card-show" plain hotkey="s" autoFocus onPress={() => void showAnswer($, card.id)}>
+              Show answer
+            </Button>
+          </Box>
+        ) : (
+          <Box flexDirection="column" marginTop={1}>
+            <Text>{card.note}</Text>
+            <Box flexWrap="wrap" columnGap={2} marginTop={1}>
+              {grades.map(([g, label]) => (
+                <Button
+                  key={`lingo-card-${g}`}
+                  plain
+                  hotkey={String(g)}
+                  autoFocus={g === 3 ? true : undefined}
+                  onPress={() => grade($, card.id, g)}
+                >
+                  {label} <Text dimColor>{fmtInterval(rate(card, g, 0).due)}</Text>
+                </Button>
+              ))}
+              <Button key="lingo-card-remove" plain dimColor hotkey="x" onPress={() => removeCard($, card.id)}>
+                Remove
+              </Button>
+            </Box>
+          </Box>
+        )}
+        {e.surface === 'terminal' && e.props.isFocused === false && <Text dimColor>ctrl+x tab to use the keys</Text>}
+      </Box>
+    )
+  })
 
   on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
     const row = await next(e)

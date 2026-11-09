@@ -2002,3 +2002,267 @@ test('/lingo words and forget with the target Off say Lingo is off', { options: 
   expect(await lingoCmd($, 'words')).toBe(off)
   expect(await lingoCmd($, 'forget flaky')).toBe(off)
 })
+
+test('/lingo words names a Chinese deck by its tag, ZH', { options: { foldTranslations: false, targetLanguage: '简体中文' } } as any, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  store.set('cards1:zh-CN', [cardOf('登录', 1)])
+  expect(await lingoCmd($, 'words')).toBe('Lingo · ZH: 1 word · 0 due · 1 new. Latest: 登录 · /lingo review · /lingo forget <word>')
+})
+
+// ---- flashcards: /lingo review and the pane ----------------------------------
+
+const REVIEW_PANE = {
+  plugin: 'lingo',
+  component: 'Pane',
+  requestId: 'lingo-review',
+  props: { title: 'Lingo review', isFocused: true, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+} as const
+
+/** The deck's cards, newest first in a session; `ctx` is the sentence each came from. */
+const fresh = (word: string, added: number, extra: object = {}) =>
+  cardOf(word, added, { note: `note of ${word}`, ctx: `A sentence with ${word}.`, ...extra })
+
+/** The engine's side of a review: pane open / close calls recorded, toasts collected. */
+function reviewSide(on: any) {
+  const opened: any[] = []
+  const closed: any[] = []
+  on('ui.open', (_: any, e: any) => {
+    opened.push(e)
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', (_: any, e: any) => {
+    closed.push(e)
+    return { value: undefined }
+  })
+  on('ui.log', () => ({ value: undefined }))
+  return { opened, closed, told: toasts(on) }
+}
+
+const mountPane = ($: any, surface: (typeof SURFACES)[number] = 'terminal', props: object = {}) =>
+  $.ui.mount({ ...REVIEW_PANE, surface, props: { ...REVIEW_PANE.props, ...props } })
+
+test('/lingo review answers without a pane for an empty deck, nothing due and the target Off', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  const side = reviewSide(on)
+  expect(await lingoCmd($, 'review')).toBe(
+    'Lingo: no words saved yet. Send a prompt in your own language after its preview shows; its key words are saved.',
+  )
+  store.set('cards1:en', [fresh('a', 1, { reps: 2, ivl: 3, due: NOW + 3 * 3_600_000 + 4 * 3_600_000 }), fresh('b', 2, { reps: 2, ivl: 3, due: NOW + DAY_MS })])
+  expect(await lingoCmd($, 'review')).toBe('Lingo: nothing to review. 2 words in EN; next one due in 7h.')
+  expect(side.opened).toEqual([])
+})
+
+test('/lingo review with the target Off says Lingo is off', { options: { foldTranslations: false, targetLanguage: 'Off' } } as any, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  memStore(on)
+  const side = reviewSide(on)
+  expect(await lingoCmd($, 'review')).toBe('Lingo is off. Turn it on with /lingo en (or another language).')
+  expect(side.opened).toEqual([])
+})
+
+test('/lingo review opens the pane with the keys and Esc, and answers the count', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  const side = reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1), fresh('b', 2)])
+  expect(await lingoCmd($, 'review')).toBe('Lingo: reviewing 2 words.')
+  expect(side.opened.length).toBe(1)
+  expect(side.opened[0]).toMatchObject({ id: 'lingo-review', title: 'Lingo review', focus: true, closeOnEscape: true, rows: 8 })
+})
+
+test('the front shows the word and its sentence, not the note', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  reviewSide(on)
+  store.set('cards1:zh-CN', [])
+  store.set('cards1:en', [fresh('a', 1), fresh('b', 2)])
+  await lingoCmd($, 'review')
+  const ui = await mountPane($)
+  expect((await ui.find({ type: 'Text', text: /1 \/ 2 · EN/ }))?.text).toBe('1 / 2 · EN')
+  expect(await ui.find({ type: 'Text', text: /^b$/ })).toBeTruthy() // the newest card first
+  expect(await ui.find({ type: 'Text', text: /A sentence with b/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /note of b/ })).toBeFalsy()
+  expect(await ui.find({ key: 'lingo-card-show' })).toBeTruthy()
+  expect(await ui.find({ key: 'lingo-card-3' })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('Show answer reveals the note and the four grades with their intervals', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1)])
+  await lingoCmd($, 'review')
+  const ui = await mountPane($)
+  await ui.press({ key: 'lingo-card-show' })
+  expect(await ui.find({ type: 'Text', text: /note of a/ })).toBeTruthy()
+  const labels = [] as string[]
+  for (const g of [1, 2, 3, 4]) labels.push(((await ui.find({ key: `lingo-card-${g}` })) as any).text)
+  expect(labels.map(t => t.replace(/\s+/g, ' '))).toEqual(['Again 10m', 'Hard 1d', 'Good 2d', 'Easy 4d'])
+  expect(await ui.find({ key: 'lingo-card-remove' })).toBeTruthy()
+  expect(await ui.find({ key: 'lingo-card-show' })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('Good writes the card\'s new schedule to the store and shows the next card', AUTO, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1), fresh('b', 2)])
+  await lingoCmd($, 'review')
+  const ui = await mountPane($)
+  await ui.press({ key: 'lingo-card-show' })
+  await ui.press({ key: 'lingo-card-3' })
+  await clock.settle()
+  const b = (store.get('cards1:en') as any[]).find(c => c.word === 'b')
+  expect(b).toMatchObject({ ivl: 2, reps: 1, due: NOW + 2 * DAY_MS })
+  expect((store.get('cards1:en') as any[]).find(c => c.word === 'a')).toMatchObject({ reps: 0 })
+  expect(await ui.find({ type: 'Text', text: /2 \/ 2 · EN/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^a$/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /note of a/ })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('Again brings the card back at the end of the queue', AUTO, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1), fresh('b', 2)])
+  await lingoCmd($, 'review')
+  const ui = await mountPane($)
+  await ui.press({ key: 'lingo-card-show' })
+  await ui.press({ key: 'lingo-card-1' })
+  await clock.settle()
+  expect((store.get('cards1:en') as any[]).find(c => c.word === 'b')).toMatchObject({ ivl: 0, reps: 1, due: NOW + 600_000 })
+  expect(await ui.find({ type: 'Text', text: /2 \/ 3 · EN/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^a$/ })).toBeTruthy()
+  await ui.press({ key: 'lingo-card-show' })
+  await ui.press({ key: 'lingo-card-3' })
+  await clock.settle()
+  expect(await ui.find({ type: 'Text', text: /3 \/ 3 · EN/ })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /^b$/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('Remove deletes the card from the store and moves on without counting it', AUTO, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  const side = reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1), fresh('b', 2)])
+  await lingoCmd($, 'review')
+  const ui = await mountPane($)
+  await ui.press({ key: 'lingo-card-show' })
+  await ui.press({ key: 'lingo-card-remove' })
+  await clock.settle()
+  expect((store.get('cards1:en') as any[]).map(c => c.word)).toEqual(['a'])
+  await ui.press({ key: 'lingo-card-show' })
+  await ui.press({ key: 'lingo-card-4' })
+  await clock.settle()
+  expect(side.told).toEqual(['Lingo: reviewed 1 word · next due in 4d'])
+  await ui.unmount()
+})
+
+test('after the last card the pane closes, the review is over and a toast names the count', AUTO, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  const side = reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1), fresh('b', 2)])
+  await lingoCmd($, 'review')
+  const ui = await mountPane($)
+  for (const g of [3, 3]) {
+    await ui.press({ key: 'lingo-card-show' })
+    await ui.press({ key: `lingo-card-${g}` })
+    await clock.settle()
+  }
+  expect(side.closed.length).toBe(1)
+  expect(side.closed[0]).toMatchObject({ id: 'lingo-review' })
+  expect(side.told).toEqual(['Lingo: reviewed 2 words · next due in 2d'])
+  expect(await ui.find({ type: 'Text', text: /No review running/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('a review with nothing else due says so in the toast', AUTO, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  const side = reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1)])
+  await lingoCmd($, 'review')
+  const ui = await mountPane($)
+  await ui.press({ key: 'lingo-card-show' })
+  await ui.press({ key: 'lingo-card-remove' })
+  await clock.settle()
+  expect(side.told).toEqual(['Lingo: review finished · nothing else due'])
+  await ui.unmount()
+})
+
+test('a press for a card no longer current changes nothing', AUTO, async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1), fresh('b', 2), fresh('c', 3)])
+  await lingoCmd($, 'review')
+  const ui = await mountPane($)
+  await ui.press({ key: 'lingo-card-show' })
+  // a double press: both reach the handler of card c before the second card is current
+  await Promise.all([ui.press({ key: 'lingo-card-3' }), ui.press({ key: 'lingo-card-3' })])
+  await clock.settle()
+  const deck = store.get('cards1:en') as any[]
+  expect(deck.find(c => c.word === 'c')).toMatchObject({ reps: 1, ivl: 2 })
+  expect(deck.find(c => c.word === 'b')).toMatchObject({ reps: 0 })
+  expect(await ui.find({ type: 'Text', text: /2 \/ 3 · EN/ })).toBeTruthy()
+  await ui.unmount()
+})
+
+test('the pane draws with no state or store write', AUTO, async ($, on) => {
+  let writes = 0
+  on('state.set', (_: any, e: any, next: any) => (writes++, next(e)))
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1)])
+  await lingoCmd($, 'review')
+  const before = writes
+  const stored = JSON.stringify([...store])
+  for (const surface of SURFACES) await (await mountPane($, surface)).unmount()
+  expect(writes).toBe(before)
+  expect(JSON.stringify([...store])).toBe(stored)
+  const ui = await mountPane($)
+  await ui.press({ key: 'lingo-card-show' }) // its own state write; the redraw adds none
+  expect(writes).toBe(before + 1)
+  await ui.unmount()
+})
+
+test('without the keys the terminal pane says how to get them', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1)])
+  await lingoCmd($, 'review')
+  const held = await mountPane($, 'terminal', { isFocused: false })
+  expect(await held.find({ type: 'Text', text: /ctrl\+x tab to use the keys/ })).toBeTruthy()
+  await held.unmount()
+  const has = await mountPane($, 'terminal')
+  expect(await has.find({ type: 'Text', text: /ctrl\+x tab/ })).toBeFalsy()
+  await has.unmount()
+})
+
+test('the pane is drawn on every surface; with no review it says none runs', AUTO, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const store = memStore(on)
+  reviewSide(on)
+  store.set('cards1:en', [fresh('a', 1)])
+  for (const surface of SURFACES) {
+    const idle = await mountPane($, surface)
+    expect(await idle.find({ type: 'Text', text: /No review running · \/lingo review/ })).toBeTruthy()
+    await idle.unmount()
+  }
+  await lingoCmd($, 'review')
+  for (const surface of SURFACES) {
+    const ui = await mountPane($, surface)
+    expect(await ui.find({ type: 'Text', text: /^a$/ })).toBeTruthy()
+    expect(await ui.find({ key: 'lingo-card-show' })).toBeTruthy()
+    await ui.unmount()
+  }
+})

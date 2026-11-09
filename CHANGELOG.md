@@ -2,6 +2,14 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
+## [0.4.7] - 2026-11-09
+
+### Added
+- **`/lingo review`**: opens a pane that quizzes the saved words (up to 20 per session, at most 10 new): the word and its sentence, then `s` shows the note and `1` to `4` grade it (Again, Hard, Good, Easy, with the next interval); `x` removes the card; Enter shows the note, then grades Good. Every grade is saved as it is made; the pane closes itself after the last card.
+
+### Fixed
+- `/lingo words` names the language by its tag (`ZH`), not its code (`ZH-CN`).
+
 ## [0.4.6] - 2026-11-09
 
 ### Added

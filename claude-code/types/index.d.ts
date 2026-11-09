@@ -28,6 +28,27 @@ export type Draft = {
   why?: string
 }
 
+/** A language code, as in hooks/lang.ts (the contract is self-contained, so it is repeated here). */
+export type Code = 'en' | 'fr' | 'es' | 'de' | 'pt' | 'ja' | 'ko' | 'zh-CN' | 'zh-TW' | 'ru' | 'vi'
+
+/** A saved word and its schedule, as in hooks/cards.ts. */
+export type Card = {
+  id: string
+  word: string
+  note: string
+  ctx?: string
+  native: Code
+  added: number
+  due: number
+  ivl: number
+  ease: number
+  reps: number
+  lapses: number
+}
+
+/** The running flashcard review: the session's queue (a card graded Again is appended again), the position, whether the answer shows, and how many ratings so far. */
+export type Review = { target: Code; queue: Card[]; pos: number; shown: boolean; rated: number } | null
+
 declare module 'claude-code' {
   interface PluginState {
     lingo: {
@@ -43,6 +64,8 @@ declare module 'claude-code' {
       shown: StateFamily<boolean>
       /** Words saved as flashcards from a sent prompt, by gloss id (the mark `+N words` on its row). */
       saved: StateFamily<number>
+      /** The running flashcard review (`/lingo review`); the pane draws from it alone. */
+      review: Review
     }
   }
 }
