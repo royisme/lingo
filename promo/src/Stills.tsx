@@ -90,7 +90,7 @@ const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 /** Write: a Chinese speaker learning English; a live translation with key words, and a polish with reasons. */
 export const Write: React.FC = () => (
   <Backdrop>
-    <Heading eyebrow="WRITE" title={<>Type in your language, <span style={{ color: C.accent }}>send it in theirs</span></>} sub="A live preview while you type: key words and fixes explained in your own language. Press u to use it." />
+    <Heading eyebrow="WRITE" title={<>Type in your language, <span style={{ color: C.accent }}>send it in the new one</span></>} sub="A live preview while you type: key words and fixes explained in your own language. Press u to use it." />
     <Center top={196}>
       <Label>
         <b style={{ color: C.text }}>Draft in your language</b> → the translation, with the words worth learning

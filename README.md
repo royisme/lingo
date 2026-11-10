@@ -43,7 +43,7 @@ Then open `/config`, find **Lingo**, and set **Target language** (the one you're
 
 Each prompt and reply gets an italic translation underneath, tagged with the language. A long reply is translated paragraph by paragraph, so each translation sits right under the paragraph it belongs to; code blocks, paths and commands stay as they are. Translations start folded (`▸ Translate`), so nothing is translated or paid for until you open one. Click the tag (`FR`, `JA`, `ZH`…) to switch language on the spot.
 
-### Write: type in your language, send it in theirs
+### Write: type in your language, send it in the new one
 
 <img src="docs/images/write.png" alt="The preview band: a Chinese draft translated to English with key words, and an English draft with corrections explained in Chinese" width="880">
 
