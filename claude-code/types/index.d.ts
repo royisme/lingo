@@ -6,6 +6,10 @@ export type Gloss = {
   why?: string
   /** With `error`: the failure may pass (a rate limit), so the row is tried again once by itself. */
   passing?: boolean
+  /** With `done`, a paragraph-aligned translation: `text` is `parts` translations joined by a blank line
+   *  (none contains one), for a source that had `of` prose segments. `parts < of`: cut at the token cap. */
+  parts?: number
+  of?: number
 }
 
 /**

@@ -19,6 +19,7 @@ import {
   polishPrompt,
   previewPrompt,
   shield,
+  shieldParts,
   systemPrompt,
   unshieldExact,
   unshieldForDisplay,
@@ -29,6 +30,8 @@ import {
 import type { Code, Item, Language, Word } from './lang'
 import { addWords, deckStats, fmtInterval, pickSession, rate, readDeck, removeWord } from './cards'
 import type { Card, Grade } from './cards'
+import { alignable, alignedPrompt, joinParts, numbered, parseAligned } from './segment'
+import type { Chunk } from './segment'
 import { chatRequest, hostOf, readChat } from './openai'
 import type { Attempt } from './openai'
 
@@ -371,7 +374,9 @@ async function ask($: EngineInterface, system: string, prompt: string): Promise<
 async function storedGloss($: EngineInterface, id: string): Promise<Gloss | undefined> {
   try {
     const v = (await $.store.get(`${GLOSS_KEY}${id}`)) as Gloss | undefined
-    return v && (v.status === 'done' || v.status === 'same') ? { status: v.status, text: String(v.text ?? '') } : undefined
+    if (!v || (v.status !== 'done' && v.status !== 'same')) return undefined
+    const aligned = Number.isFinite(v.parts) && Number.isFinite(v.of) ? { parts: v.parts, of: v.of } : {}
+    return { status: v.status, text: String(v.text ?? ''), ...aligned }
   } catch {
     return undefined
   }
@@ -435,7 +440,11 @@ function keepGloss($: EngineInterface, id: string, gloss: Gloss) {
   if (gloss.status !== 'done' && gloss.status !== 'same') return
   storeChain = storeChain
     .then(async () => {
-      if (!(await storeSet($, `${GLOSS_KEY}${id}`, { status: gloss.status, text: gloss.text }))) return
+      if (!(await storeSet($, `${GLOSS_KEY}${id}`, {
+          status: gloss.status,
+          text: gloss.text,
+          ...(gloss.parts !== undefined && gloss.of !== undefined ? { parts: gloss.parts, of: gloss.of } : {}),
+        }))) return
       // read after the entry write: a full store may have just shortened the index
       const index = ((await $.store.get(STORE_INDEX)) as string[] | undefined) ?? []
       const next = [...index.filter(k => k !== id), id]
@@ -489,6 +498,42 @@ async function translate($: EngineInterface, text: string, target: Language, all
   if (allowSame && out === SAME) return { status: 'same', text: '' } as const
   const cut = a.cut ? ' …' : '' // stopped at the cap
   return { status: 'done', text: plain(unshieldForDisplay(out, sent.kept)) + cut } as const
+}
+
+/** Aligned calls that came back misaligned or unusable in a row; at MISSES_OFF the aligned prompt is off for this load. */
+let alignMisses = 0
+let alignedOff = false
+const MISSES_OFF = 3
+
+/**
+ * A long text translated by paragraph: one call, `{"t":[...]}`, a part for each prose segment of `chunks`.
+ * A wrong-length or non-JSON answer is kept as a whole translation (no second call); an unusable one
+ * is translated again as a whole text (`translate`).
+ */
+async function translateAligned($: EngineInterface, chunks: Chunk[], text: string, target: Language, allowSame: boolean): Promise<Gloss> {
+  const says = chunks.map(c => c.say).filter(Boolean)
+  const sent = shieldParts(says)
+  const a = await ask($, alignedPrompt(target, says.length, allowSame), wrapForModel(numbered(sent.parts)))
+  if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing }
+  const r = parseAligned(unwrapAnswer(a.text), says.length, a.cut, allowSame)
+  if (r?.kind === 'same') return { status: 'same', text: '' }
+  const show = (t: string) => plain(unshieldForDisplay(t, sent.kept))
+  const cut = a.cut ? ' …' : ''
+  let whole = r?.kind === 'whole' ? show(r.text) : ''
+  if (r?.kind === 'parts') {
+    const parts = r.parts.map(show)
+    if (parts.every(Boolean)) {
+      alignMisses = 0
+      if (r.cut) parts[parts.length - 1] += ' …'
+      return { status: 'done', text: joinParts(parts), parts: parts.length, of: says.length }
+    }
+    whole = joinParts(parts) // a part came out empty (only unknown markers): no place for it, keep the text whole
+  }
+  if (++alignMisses >= MISSES_OFF && !alignedOff) {
+    alignedOff = true
+    $.ui.log('Lingo: the model does not return aligned translations; translating whole texts instead', { to: 'debug' })
+  }
+  return whole ? { status: 'done', text: whole + cut } : translate($, text, target, allowSame)
 }
 
 /** What the preview asks for a draft: the translation or the polish, and the learning detail with it. */
@@ -570,7 +615,8 @@ async function runGloss($: EngineInterface, text: string, target: Language, id: 
       return
     }
     await $.state.set(ref, { status: 'pending', text: '' } satisfies Gloss)
-    const gloss: Gloss = await translate($, text, target, allowSame)
+    const chunks = alignedOff ? undefined : alignable(text)
+    const gloss: Gloss = chunks ? await translateAligned($, chunks, text, target, allowSame) : await translate($, text, target, allowSame)
     // This module has tried it now: no try by itself on the next draw (that is for earlier loads' failures).
     if (gloss.status === 'error') autoRetried.add(id)
     await $.state.set(ref, gloss)

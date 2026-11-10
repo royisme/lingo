@@ -1,5 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
+import { systemPrompt } from './lang'
 import {
   CODE,
   FIX,
@@ -2265,4 +2266,172 @@ test('the pane is drawn on every surface; with no review it says none runs', AUT
     expect(await ui.find({ key: 'lingo-card-show' })).toBeTruthy()
     await ui.unmount()
   }
+})
+
+// ---- paragraph-aligned translation (one call for a long reply) -----------------
+
+const LONG = '先看日志。\n\n再看连接池配置。\n\n最后重启服务。'
+const longOf = (n: number) => `${LONG}\n\n第${n}段补充。`
+const ALIGNED = JSON.stringify({ t: ['Check the logs.', 'Then the pool config.', 'Finally restart.'] })
+
+/** Replies `answers` in turn (the last one repeats); returns the calls as {system, prompt} and the store. */
+function aligned(on: any, answers: (string | { isAnswered: false; reason: string; status: number; error: string })[], tokens = 10) {
+  const calls: { system: string; prompt: string }[] = []
+  on('model.complete', (_: any, e: any) => {
+    calls.push({ system: e.system, prompt: e.prompt })
+    const a = answers[Math.min(calls.length - 1, answers.length - 1)]
+    if (typeof a !== 'string') return { value: { ...a, usage: USAGE } }
+    return { value: { isAnswered: true, text: a, usage: { ...USAGE, output_tokens: tokens } } }
+  })
+  const store = memStore(on)
+  engineRow(on)
+  return { calls, store }
+}
+
+/** Lets the calls go through, past the pacing gap between them. */
+async function drain(clock: any) {
+  for (let i = 0; i < 3; i++) {
+    await clock.settle()
+    await clock.advance(2000)
+  }
+  await clock.settle()
+}
+
+async function translated($: any, clock: any, text: string, id = 'a1') {
+  const ui = await $.ui.mount({ ...replyRow(text), requestId: id })
+  await endTurn($, text)
+  await drain(clock)
+  await ui.unmount()
+}
+
+const storedOf = (store: Map<string, unknown>, text: string) => store.get(`g2:${hash('en\u0000' + text.trim())}`)
+
+test('a long reply is translated in one aligned call and stored with its parts', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls, store } = aligned(on, [ALIGNED])
+  const ui = await $.ui.mount(replyRow(LONG))
+  await endTurn($, LONG)
+  await clock.settle()
+  expect(calls.length).toBe(1)
+  expect(calls[0].system).toContain('{"t"')
+  expect(unwrapped(calls[0].prompt)).toBe('[#1]\n先看日志。\n\n[#2]\n再看连接池配置。\n\n[#3]\n最后重启服务。')
+  expect(calls[0].prompt.startsWith('<<<\n') && calls[0].prompt.endsWith('\n>>>')).toBe(true)
+  const text = 'Check the logs.\n\nThen the pool config.\n\nFinally restart.'
+  expect(storedOf(store, LONG)).toEqual({ status: 'done', text, parts: 3, of: 3 })
+  expect((await ui.find({ type: 'Text', text: /Check the logs/ }))?.text).toBe(text)
+  await ui.unmount()
+})
+
+test('a long reply opened by /lingo show (folded default) makes the same aligned call', async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls, store } = aligned(on, [ALIGNED])
+  on('command.register', () => ({ value: { command: 'lingo' } }))
+  on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true } as any)
+  const ui = await $.ui.mount({ ...replyRow(LONG), surface: 'terminal', requestId: 'a-long' })
+  await clock.settle()
+  expect(calls.length).toBe(0)
+  await $.command.run({ command: 'lingo', args: 'show' } as any)
+  await clock.settle()
+  expect(calls.length).toBe(1)
+  expect(calls[0].system).toContain('{"t"')
+  expect((storedOf(store, LONG) as any).parts).toBe(3)
+  await ui.unmount()
+})
+
+test('code in a long reply is not sent; its markers run across the parts', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls } = aligned(on, [JSON.stringify({ t: ['Look at ⟦1⟧.', 'Then run ⟦2⟧.'] })])
+  const text = '看一下 `pool.ts`。\n\n```ts\nconst pool = createPool()\n```\n\n然后运行 /review。\n\n最后重启。'
+  const ui = await $.ui.mount(replyRow(text))
+  await endTurn($, text)
+  await clock.settle()
+  expect(calls[0].prompt).not.toContain('createPool')
+  expect(calls[0].prompt).toContain('[#1]\n看一下 ⟦1⟧。')
+  expect(calls[0].prompt).toContain('[#2]\n然后运行 ⟦2⟧。')
+  expect(calls[0].prompt).toContain('[#3]')
+  await ui.unmount()
+})
+
+test('a wrong-length answer is kept whole with no second call', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls, store } = aligned(on, [JSON.stringify({ t: ['Check the logs.', 'Then the rest.'] })])
+  await translated($, clock, LONG)
+  expect(calls.length).toBe(1)
+  expect(storedOf(store, LONG)).toEqual({ status: 'done', text: 'Check the logs.\nThen the rest.' })
+})
+
+test('a broken-JSON answer makes one more call with the plain prompt', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls, store } = aligned(on, ['{"t":["Check the logs.", oops', 'Check the logs. Then the pool. Restart.'])
+  await translated($, clock, LONG)
+  expect(calls.length).toBe(2)
+  expect(calls[0].system).toContain('{"t"')
+  expect(calls[1].system).toBe(systemPrompt(EN, false))
+  expect(calls[1].prompt).toBe(`<<<\n${LONG}\n>>>`)
+  expect(storedOf(store, LONG)).toEqual({ status: 'done', text: 'Check the logs. Then the pool. Restart.' })
+})
+
+test('three misses in a row turn the aligned prompt off', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls } = aligned(on, ['{"t":["only one"]}'])
+  for (let i = 1; i <= 3; i++) await translated($, clock, longOf(i), `a${i}`)
+  expect(calls.length).toBe(3)
+  expect(calls.every(c => c.system.includes('{"t"'))).toBe(true)
+  await translated($, clock, longOf(4), 'a4')
+  expect(calls.length).toBe(4)
+  expect(calls[3].system).toBe(systemPrompt(EN, false))
+})
+
+test('a token cap with cut JSON keeps the complete items and ends with …', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { store } = aligned(on, ['{"t":["Check the logs.","Then the poo'], 4096)
+  await translated($, clock, LONG)
+  expect(storedOf(store, LONG)).toEqual({ status: 'done', text: 'Check the logs. …', parts: 1, of: 3 })
+})
+
+test('a short reply is translated exactly as before', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls, store } = aligned(on, ['Check the logs.'])
+  await translated($, clock, '先看日志。\n\n再看配置。')
+  expect(calls.length).toBe(1)
+  expect(calls[0].system).toBe(systemPrompt(EN, false))
+  expect(calls[0].prompt).toBe('<<<\n先看日志。\n\n再看配置。\n>>>')
+  expect(storedOf(store, '先看日志。\n\n再看配置。')).toEqual({ status: 'done', text: 'Check the logs.' })
+})
+
+test('an old-format kept entry for a long reply is reused: no call', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls, store } = aligned(on, [ALIGNED])
+  store.set(`g2:${hash('en\u0000' + LONG)}`, { status: 'done', text: 'Old whole translation.' })
+  const ui = await $.ui.mount(replyRow(LONG))
+  await endTurn($, LONG)
+  await clock.settle()
+  expect(calls.length).toBe(0)
+  expect((await ui.find({ type: 'Text', text: /Old whole/ }))?.text).toBe('Old whole translation.')
+  await ui.unmount()
+})
+
+test('a kept aligned entry comes back with its parts', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls, store } = aligned(on, [ALIGNED])
+  const kept = { status: 'done', text: 'a\n\nb\n\nc', parts: 3, of: 3 }
+  store.set(`g2:${hash('en\u0000' + LONG)}`, kept)
+  await translated($, clock, LONG)
+  expect(calls.length).toBe(0)
+  expect(storedOf(store, LONG)).toEqual(kept)
+})
+
+test('a rate limit on the aligned call makes no whole-text fallback call', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const { calls } = aligned(on, [{ isAnswered: false, reason: 'api-error', status: 429, error: 'rate_limit' }])
+  const ui = await $.ui.mount(replyRow(LONG))
+  await endTurn($, LONG)
+  for (let i = 0; i < 6; i++) {
+    await clock.advance(20000)
+    await clock.settle()
+  }
+  expect(calls.length).toBeGreaterThan(0)
+  expect(calls.every(c => c.system.includes('{"t"'))).toBe(true)
+  await ui.unmount()
 })
