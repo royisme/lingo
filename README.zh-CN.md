@@ -57,6 +57,8 @@ claude plugin install lingo --marketplace royisme/lingo
 - **运行 `/lingo` 命令**：例如 `/lingo fr`、`/lingo ja`、`/lingo zh-TW`、`/lingo off`。
 - **展开折叠的译文**：点消息下方的 `▸ Translate`；终端里点不了时，运行 `/lingo show` 翻译最近一条回复。点已展开的译文可以再折叠。
 
+较长的回复（3 段及以上）只用一次调用翻译，并按段落显示：每段的译文紧跟在该段下面，代码块不会被发送。
+
 ## 闪卡
 
 预览下方列出的关键词，会在你发送该草稿或按 **Use** 时存入词库（每种目标语言一个），不会额外调用模型，放弃的草稿也不会保存。运行 `/lingo review` 打开复习面板：`s` 显示释义，`1` 到 `4` 评分（Again、Hard、Good、Easy），`x` 删除，Esc 关闭。间隔按 SM-2 方式安排（连续选 Good 依次为 2、5、13、33 天）。`/lingo words` 查看词库概况，`/lingo forget <word>` 删除某张卡片。

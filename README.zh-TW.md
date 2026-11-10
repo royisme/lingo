@@ -57,6 +57,8 @@ claude plugin install lingo --marketplace royisme/lingo
 - **執行 `/lingo` 指令**：例如 `/lingo fr`、`/lingo ja`、`/lingo zh-TW`、`/lingo off`。
 - **展開摺疊的譯文**：點訊息下方的 `▸ Translate`；終端機裡點不了時，執行 `/lingo show` 翻譯最近一則回覆。點已展開的譯文可以再摺疊。
 
+較長的回覆（3 段以上）只用一次呼叫翻譯，並依段落顯示：每段的譯文緊接在該段下方，程式碼區塊不會被送出。
+
 ## 單字卡
 
 預覽下方列出的關鍵詞，會在你送出該草稿或按 **Use** 時存入字庫（每種目標語言一個），不會額外呼叫模型，放棄的草稿也不會儲存。執行 `/lingo review` 開啟複習面板：`s` 顯示解釋，`1` 到 `4` 評分（Again、Hard、Good、Easy），`x` 刪除，Esc 關閉。間隔採 SM-2 方式安排（連續選 Good 依序為 2、5、13、33 天）。`/lingo words` 查看字庫概況，`/lingo forget <word>` 刪除某張卡片。

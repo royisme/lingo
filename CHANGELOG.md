@@ -2,10 +2,13 @@
 
 All notable changes to the Lingo plugin for Claude Code are documented in this file.
 
-## [0.5.1] - 2026-11-10
+## [0.6.0] - 2026-11-10
+
+### Added
+- **Paragraph view**: a long reply (3 or more paragraphs, or 2 in a long text) is translated in one call and, once its translation is open, drawn paragraph by paragraph: each paragraph's translation sits right under it. Code blocks are never sent to the model and stay where they are. A model that cannot answer in that shape is asked for a whole translation instead, and after three misses in a row, for the rest of the session. A long reply already in your language, copied back part for part, counts as already in it. Translations kept before this release stay valid and show as one block.
 
 ### Changed
-- A long reply (3 or more paragraphs, or 2 in a long text) is translated paragraph by paragraph in one call, so each paragraph's translation can later be drawn under it. Its code blocks are not sent. A model that cannot answer in that shape is asked for a whole translation instead, and after three misses in a row, for the rest of the session. For now the translation still shows as one block, a blank line between paragraphs.
+- A translation no longer keeps Markdown links (only their text) or table pipes (`a · b`).
 
 ## [0.5.0] - 2026-11-09
 

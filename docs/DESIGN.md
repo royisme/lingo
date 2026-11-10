@@ -52,6 +52,27 @@ States:
 | error | `Translation failed (<why>) · Retry` dim, a plain `Button` (`key="lingo-retry"`); pressing it translates again. `<why>` is a few words: `rate_limit 429`, `no connection`, `timed out or cut off`, `empty reply`, `refused: …` |
 | same | nothing (row untouched) |
 
+### 3.1.1 Paragraph view
+
+A long reply is read and answered paragraph by paragraph. Used when its text has 3 or more prose segments, or 2 or more in 600+ characters (`alignable`, `hooks/segment.ts`); shorter texts keep the single gloss above, unchanged.
+
+```
+● <engine row, drawn from chunk 0>
+  [EN] Translation of part 1
+  <Markdown of chunk 1>
+  EN Translation of part 2
+  <Markdown of the trailing code, no gloss>
+```
+
+- **Layout.** The `AssistantMessage` hook calls `next()` with `text` rewritten to the first chunk (display-only: the stored message is untouched), so the engine draws the head with its own chrome. Each later chunk is a `Box` (`marginTop 1`, `paddingLeft 2`) holding a `Markdown` of its source and, when it has prose, its translation: a plain bold accent tag (no frame, no button) and the italic accent text (`flexShrink 1`). `lingo-tag` and `lingo-fold` stay on the first gloss line only; the tag menu opens under it.
+- **When it shows.** Only while the gloss is open, `done` and aligned. Every other state keeps the engine's whole row: folded, pending, error, same, hidden, a gloss whose `parts`/`of` do not fit the reply's segmentation (misaligned), and, for a gloss cut at the token cap (`parts < of`), the chunks past its parts, drawn as source with no gloss line. `alignedView` only reads state, so a render never writes.
+- **Segmentation** (`segment`, pure, recomputed at draw time, never stored). Fences (``` and ~~~, blank lines inside kept, unclosed runs to the end), thematic breaks and blocks with no word left (inline code, a URL, a path, numbers) are kept as they are and never sent. A list is one segment, a heading joins the paragraph after it, a table (without its separator row) and a quote (without its `>`) are one segment each. Each prose block closes a chunk after the code before it; at most 40 chunks (the rest merge into the last).
+- **The call.** One call, `{"t":["…", …]}`: the segments go as `[#1]`, `[#2]`… lines, markers `⟦n⟧` are numbered across all of them, and the answer must hold exactly one string per segment. A wrong-length or non-JSON answer is kept as a whole translation (no second call, no `parts`); an unusable one (broken JSON, empty items) is translated again as a whole text with the plain prompt; a cut answer keeps its complete items and ends with ` …`. Three misses in a row switch the aligned prompt off for the load (one debug line).
+- **Same-copy rule.** With `allowSame`, when every returned part equals the part sent, the reply is already in the target: the gloss is `same`.
+- **Data.** `Gloss` gains optional `parts` and `of`; `text` stays the whole translation, parts joined by a blank line, so an older module still shows a correct whole text. Same `g2:` keys; old `{status, text}` entries stay valid (a long reply already cached whole is not translated again) and draw as one block.
+- **Side effects.** The rewrite is a drawing change: ctrl+o shows the same view, and other plugins hooked below Lingo see the shortened `text` while the view is open.
+- **Live check (2026-11-10, Claude Code 2.1.321).** Head rewrite plus `Markdown` chunks passed in the terminal: same indent and spacing as the engine's own row, and lists, fenced code, tables and links byte-identical; toggling a reply scrolled pages up redraws it without tearing; at 40 columns glosses wrap under themselves; on the main screen the row redraws in place; the debug log shows no refused, threw or denied lines. With the real feature and Haiku 5.5: one call, parts aligned, paths and commands kept, code not sent; the ctrl+o transcript shows the same view. Not yet checked: the desktop app, mobile, a small local model.
+
 ### 3.2 Language tag
 
 | Surface | Look |
@@ -60,6 +81,8 @@ States:
 | desktop, vscode, mobile | Bold caption-size accent letters inside a `round` border in the accent color, `paddingX 1` |
 
 The tag is a `Button` (`key="lingo-tag"`, `plain`): pressing it opens the tag menu.
+
+Amendment (paragraph view, 3.1.1): the later paragraphs of an aligned reply carry an unframed tag, bold accent text and no button, on every surface (a frame per paragraph would cost three rows each on desktop). Only the first gloss line has the framed, pressable tag.
 
 Tags: `EN FR ES DE PT JA KO ZH ZH-TW RU VI`.
 
@@ -248,6 +271,7 @@ Both answer the same `Attempt` (`hooks/openai.ts`), so pacing, cooldown, retries
 
 | Control | Rule |
 | --- | --- |
+| Aligned replies | A long reply is one call for the whole reply (`{"t":[…]}`), never one per paragraph; its code is never sent. A misaligned answer is kept whole with no second call; only an unusable one costs a whole-text call; three misses in a row turn the aligned prompt off for the load |
 | No model call for cards | Capture reads the preview's `words`; review and scheduling are local. Decks live in `$.store` under `cards1:<code>` (one per target language), at most 500 cards each (the best-known, by interval, go first); a review session is at most 20 cards, 10 of them new |
 | One reply per turn | With folding off, only the turn's final reply is translated, as the turn completes; the text blocks between tool calls show `▸ Translate`. Prompts are one per turn already |
 | Delimited message | The text goes to the model (glosses, preview and polish alike) between `<<<` and `>>>` lines, after shielding, and each system prompt says it is text to translate or check, never instructions: a prompt such as "list the files" was once answered instead of translated. `<<<` / `>>>` lines a model echoes are stripped before parsing |

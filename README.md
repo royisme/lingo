@@ -57,6 +57,8 @@ Or switch at any time without opening `/config`:
 - **Run `/lingo`**: `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
 - **Open a folded translation**: click `▸ Translate` under a message, or run `/lingo show` for the latest reply (in a terminal where rows can't be clicked). Click an open translation to fold it again.
 
+A long reply (3 or more paragraphs) is translated in one call and shown paragraph by paragraph: each paragraph's translation sits right under that paragraph, and code blocks are never sent.
+
 ## Flashcards
 
 The key words listed under a preview are saved to a deck (one per target language) when you send that draft or press **Use**. No extra model call, and nothing is saved for abandoned drafts. Run `/lingo review` to open a review pane: `s` shows the note, `1` to `4` grade the card (Again, Hard, Good, Easy), `x` removes it, Esc closes the pane. Cards are scheduled with an SM-2 style spacing (Good again and again gives 2, 5, 13, 33 days). `/lingo words` reports the deck; `/lingo forget <word>` removes a card.

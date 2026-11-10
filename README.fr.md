@@ -57,6 +57,8 @@ Ou changez à tout moment sans ouvrir `/config` :
 - **Exécutez `/lingo`** : `/lingo fr`, `/lingo ja`, `/lingo zh-TW`, `/lingo off`.
 - **Ouvrir une traduction repliée** : cliquez sur `▸ Translate` sous un message, ou lancez `/lingo show` pour la dernière réponse (dans un terminal où les lignes ne sont pas cliquables). Cliquez sur une traduction ouverte pour la replier.
 
+Une longue réponse (3 paragraphes ou plus) est traduite en un seul appel et affichée paragraphe par paragraphe : la traduction de chaque paragraphe se place juste en dessous de lui, et les blocs de code ne sont jamais envoyés.
+
 ## Cartes mémoire
 
 Les mots clés listés sous un aperçu sont enregistrés dans un paquet (un par langue cible) quand vous envoyez ce brouillon ou appuyez sur **Use**. Aucun appel supplémentaire au modèle, et rien n'est enregistré pour un brouillon abandonné. `/lingo review` ouvre un panneau de révision : `s` affiche la note, `1` à `4` notent la carte (Again, Hard, Good, Easy), `x` la supprime, Échap ferme le panneau. Les intervalles suivent une méthode de type SM-2 (Good à répétition donne 2, 5, 13, 33 jours). `/lingo words` résume le paquet ; `/lingo forget <word>` supprime une carte.
