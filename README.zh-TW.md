@@ -128,7 +128,7 @@ Lingo 也能用任何相容 OpenAI chat-completions API 的端點來翻譯，包
 
 ## 設計
 
-各項設計決策（註解行、語言標籤及其選單、預覽列、分段檢視、單字卡、設定、顏色和文案）都記錄在 [docs/DESIGN.md](docs/DESIGN.md)。上面的圖片由 [Remotion](https://www.remotion.dev) 根據 [promo/](promo/) 製作。
+各項設計決策（註解行、語言標籤及其選單、預覽列、分段檢視、單字卡、設定、顏色和文案）都記錄在 [docs/DESIGN.md](docs/DESIGN.md)。
 
 ## 開發
 

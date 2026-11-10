@@ -128,7 +128,7 @@ Lingo 也可以用任何兼容 OpenAI chat-completions API 的端点来翻译，
 
 ## 设计
 
-各项设计决策（译文行、语言标签及其菜单、预览栏、分段视图、生词卡、设置、颜色和文案）见 [docs/DESIGN.md](docs/DESIGN.md)。上面的图片由 [Remotion](https://www.remotion.dev) 根据 [promo/](promo/) 制作。
+各项设计决策（译文行、语言标签及其菜单、预览栏、分段视图、生词卡、设置、颜色和文案）见 [docs/DESIGN.md](docs/DESIGN.md)。
 
 ## 开发
 

@@ -128,7 +128,7 @@ Las peticiones pasan por la propia capa de red de Claude Code, así que se aplic
 
 ## Diseño
 
-Las decisiones de diseño (la glosa, la etiqueta de idioma y su menú, la banda de vista previa, la vista por párrafos, las tarjetas de estudio, los ajustes, los colores y los textos) están en [docs/DESIGN.md](docs/DESIGN.md). Las imágenes de arriba se hacen con [Remotion](https://www.remotion.dev) a partir de [promo/](promo/).
+Las decisiones de diseño (la glosa, la etiqueta de idioma y su menú, la banda de vista previa, la vista por párrafos, las tarjetas de estudio, los ajustes, los colores y los textos) están en [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Desarrollo
 

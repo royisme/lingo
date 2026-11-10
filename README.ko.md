@@ -128,7 +128,7 @@ Lingo는 OpenAI chat-completions API를 지원하는 모든 엔드포인트로 �
 
 ## 디자인
 
-디자인 결정 사항(주석 줄, 언어 태그와 메뉴, 미리보기 밴드, 문단 보기, 단어 카드, 설정, 색상, 문구)은 [docs/DESIGN.md](docs/DESIGN.md)에 정리되어 있습니다. 위의 이미지는 [promo/](promo/)를 바탕으로 [Remotion](https://www.remotion.dev)으로 만들었습니다.
+디자인 결정 사항(주석 줄, 언어 태그와 메뉴, 미리보기 밴드, 문단 보기, 단어 카드, 설정, 색상, 문구)은 [docs/DESIGN.md](docs/DESIGN.md)
 
 ## 개발
 

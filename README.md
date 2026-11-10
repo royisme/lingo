@@ -128,7 +128,7 @@ Requests go through Claude Code's own network layer, so your organization's web-
 
 ## Design
 
-The design decisions (the gloss, the language tag and its menu, the preview band, the paragraph view, flashcards, settings, colors and copy) are in [docs/DESIGN.md](docs/DESIGN.md). The images above are made with [Remotion](https://www.remotion.dev) from [promo/](promo/).
+The design decisions (the gloss, the language tag and its menu, the preview band, the paragraph view, flashcards, settings, colors and copy) are in [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Development
 

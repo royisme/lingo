@@ -128,7 +128,7 @@ OpenAI の chat-completions API に対応していれば、無料のものや完
 
 ## デザイン
 
-デザイン上の判断(注釈行、言語タグとそのメニュー、プレビューバンド、段落ビュー、単語カード、設定、色、文言)は [docs/DESIGN.md](docs/DESIGN.md) にまとめています。上の画像は [promo/](promo/) から [Remotion](https://www.remotion.dev) で作っています。
+デザイン上の判断(注釈行、言語タグとそのメニュー、プレビューバンド、段落ビュー、単語カード、設定、色、文言)は [docs/DESIGN.md](docs/DESIGN.md)
 
 ## 開発
 

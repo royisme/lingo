@@ -128,7 +128,7 @@ Les requêtes passent par la couche réseau de Claude Code, donc la politique we
 
 ## Conception
 
-Les choix de conception (la glose, l'étiquette de langue et son menu, la bande d'aperçu, la vue par paragraphe, les cartes mémoire, les réglages, les couleurs et les textes) sont détaillés dans [docs/DESIGN.md](docs/DESIGN.md). Les images ci-dessus sont réalisées avec [Remotion](https://www.remotion.dev) à partir de [promo/](promo/).
+Les choix de conception (la glose, l'étiquette de langue et son menu, la bande d'aperçu, la vue par paragraphe, les cartes mémoire, les réglages, les couleurs et les textes) sont détaillés dans [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Développement
 
