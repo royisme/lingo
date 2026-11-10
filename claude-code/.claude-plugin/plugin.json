@@ -1,7 +1,7 @@
 {
   "name": "lingo",
   "version": "0.6.0",
-  "description": "Learn a language while you code: shows a translation under your prompts and Claude's replies, and a live preview while you type. Translates with Claude or any OpenAI-compatible model (Ollama, OpenRouter, ...).",
+  "description": "Learn a language while you code: a translation under every prompt and reply (paragraph by paragraph), a live preview with word notes and fixes while you type, and flashcards from the words you use. 11 languages, any pair. Translates with Claude or any OpenAI-compatible model (Ollama, OpenRouter, ...).",
   "author": {
     "name": "Roy",
     "url": "https://github.com/royisme"

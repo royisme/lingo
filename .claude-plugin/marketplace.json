@@ -1,6 +1,6 @@
 {
   "name": "lingo",
-  "description": "Lingo: language-learning translations for Claude Code.",
+  "description": "Lingo: learn any of 11 languages while you code with Claude Code.",
   "owner": {
     "name": "Roy",
     "url": "https://github.com/royisme"
@@ -9,7 +9,7 @@
     {
       "name": "lingo",
       "source": "./claude-code",
-      "description": "Learn a language while you code: translations under your prompts and Claude's replies, plus a live preview while you type."
+      "description": "Learn a language while you code: translations under every prompt and reply, a live preview with word notes and fixes, and flashcards with spaced repetition. 11 languages."
     }
   ]
 }
