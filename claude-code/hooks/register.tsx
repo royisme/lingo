@@ -30,7 +30,7 @@ import {
 import type { Code, Item, Language, Word } from './lang'
 import { addWords, deckStats, fmtInterval, pickSession, rate, readDeck, removeWord } from './cards'
 import type { Card, Grade } from './cards'
-import { alignable, alignedPrompt, joinParts, numbered, parseAligned } from './segment'
+import { alignable, alignedPrompt, joinParts, numbered, parseAligned, splitParts } from './segment'
 import type { Chunk } from './segment'
 import { chatRequest, hostOf, readChat } from './openai'
 import type { Attempt } from './openai'
@@ -517,6 +517,8 @@ async function translateAligned($: EngineInterface, chunks: Chunk[], text: strin
   if (!a.ok) return { status: 'error', text: '', why: a.why, passing: a.passing }
   const r = parseAligned(unwrapAnswer(a.text), says.length, a.cut, allowSame)
   if (r?.kind === 'same') return { status: 'same', text: '' }
+  // A text already in the target may come back copied, part for part, instead of as "same".
+  if (allowSame && r?.kind === 'parts' && !r.cut && r.parts.every((p, i) => p === sent.parts[i].trim())) return { status: 'same', text: '' }
   const show = (t: string) => plain(unshieldForDisplay(t, sent.kept))
   const cut = a.cut ? ' …' : ''
   let whole = r?.kind === 'whole' ? show(r.text) : ''
@@ -714,8 +716,30 @@ async function savedRow($: EngineInterface, e: RenderInput, row: RenderElement, 
   )
 }
 
+/** Whether a gloss is open: folded rows, and a reply with folding off, stay closed until opened, unless a done translation is kept. Read-only. */
+async function isShown($: EngineInterface, e: RenderInput, menuId: string, kept: Gloss | null | undefined): Promise<boolean> {
+  const closed = settings.fold || e.component === 'AssistantMessage'
+  return !closed || ((await $.state.get({ ...SHOWN, id: menuId })).value ?? false) || (!settings.fold && kept?.status === 'done')
+}
+
+/** A reply drawn by paragraph: its chunks and one translation for each prose chunk. */
+type AlignedView = { chunks: Chunk[]; parts: string[] }
+
+/** The paragraph view of a reply when its gloss is open, not hidden, done and aligned; else undefined. Read-only. */
+async function alignedView($: EngineInterface, e: RenderInput, text: string): Promise<AlignedView | undefined> {
+  const target = settings.target
+  if (!target || decide(text, target) === 'skip') return undefined
+  const id = glossId(target, text)
+  const kept = (await $.state.get({ ...GLOSS, id })).value
+  if (kept?.status !== 'done' || !(await isShown($, e, `${e.requestId}:${id}`, kept))) return undefined
+  if ((await $.state.get({ ...HIDDEN, id })).value) return undefined
+  const chunks = alignable(text)
+  const parts = chunks && splitParts(kept, chunks)
+  return chunks && parts ? { chunks, parts } : undefined
+}
+
 /** The message row with a gloss under it: language tag + italic translation, and the tag's menu. */
-async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, text: string): Promise<RenderElement> {
+async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, text: string, view?: AlignedView): Promise<RenderElement> {
   const target = settings.target
   if (!target) return row
   const id = glossId(target, text)
@@ -727,9 +751,7 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
   const kept = (await $.state.get({ ...GLOSS, id })).value
   // Folded, and with folding off a reply too (one call per turn: the turn's final reply is opened
   // when the turn completes): closed until opened, unless its translation is already kept.
-  const closed = settings.fold || e.component === 'AssistantMessage'
-  const shown =
-    !closed || ((await $.state.get({ ...SHOWN, id: menuId })).value ?? false) || (!settings.fold && kept?.status === 'done')
+  const shown = await isShown($, e, menuId, kept)
   // A row that failed on something passing (a rate limit) under an earlier load, perhaps another
   // provider, is tried once more by this module, and drawn as translating, not as the old failure.
   const retry = shown && kept?.status === 'error' && kept.passing === true && !autoRetried.has(id)
@@ -742,7 +764,7 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
   const isOpen = (await $.state.get({ ...MENU, id: menuId })).value ?? false
   const limited = value?.status === 'error' || value?.status === 'done' ? false : ((await $.state.get(LIMITED)).value ?? false)
 
-  const { Box, Button, Text } = $.ui.resolve(e)
+  const { Box, Button, Markdown, Text } = $.ui.resolve(e)
   const framed = e.surface !== 'terminal'
   const mark = await savedMark($, id)
 
@@ -763,12 +785,12 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
     settings.fold ? (
       <Button key="lingo-fold" plain onPress={() => void fold($, menuId)}>
         <Text color={ACCENT} italic>
-          {value.text}
+          {view ? view.parts[0] : value.text}
         </Text>
       </Button>
     ) : (
       <Text color={ACCENT} italic>
-        {value.text}
+        {view ? view.parts[0] : value.text}
       </Text>
     )
   ) : value?.status === 'same' ? (
@@ -780,6 +802,32 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
     ) : (
       <Text dimColor>{limited ? TEXT.waiting : TEXT.translating}</Text>
     )
+
+  // The later chunks of an aligned reply: the source as Markdown, then its translation under a plain tag.
+  let n = 0
+  const rest =
+    view && value?.status === 'done'
+      ? view.chunks.slice(1).map((c, i) => {
+          const part = c.say ? view.parts[++n] : undefined
+          return (
+            <Box key={`lingo-chunk-${i + 1}`} flexDirection="column" marginTop={1} paddingLeft={2}>
+              <Markdown text={c.src} />
+              {part !== undefined && (
+                <Box flexDirection="row" gap={1} marginTop={1}>
+                  <Text color={ACCENT} bold size="caption">
+                    {target.tag}
+                  </Text>
+                  <Box flexShrink={1}>
+                    <Text color={ACCENT} italic>
+                      {part}
+                    </Text>
+                  </Box>
+                </Box>
+              )}
+            </Box>
+          )
+        })
+      : null
 
   return (
     <Box flexDirection="column">
@@ -827,6 +875,7 @@ async function glossRow($: EngineInterface, e: RenderInput, row: RenderElement, 
           </Box>
         </Box>
       )}
+      {rest}
     </Box>
   )
 }
@@ -1268,10 +1317,12 @@ export const register: Register = (on, options) => {
 
   // Claude's text blocks; tool calls are rows of their own and never reach here.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
-    const row = await next(e)
-    if (!settings.replies || e.props.isSummary) return row
+    if (!settings.replies || e.props.isSummary) return next(e)
     lastReply = { requestId: e.requestId, text: e.props.text }
-    return glossRow($, e, row, e.props.text)
+    // An open aligned gloss: the engine draws the first chunk and glossRow the rest (a display-only rewrite).
+    const view = await alignedView($, e, e.props.text)
+    const row = await next(view ? { ...e, props: { ...e.props, text: view.chunks[0].src } } : e)
+    return glossRow($, e, row, e.props.text, view)
   })
 
   on('prompt.edit', async ($, e, next) => {

@@ -409,6 +409,9 @@ test('shield keeps code, URLs, commands and mentions from the model; plain strip
   expect(unshieldExact('Use ⟦3⟧', ['/review'])).toBeUndefined()
   expect(plain('## Cause\n**The pool** is full; see `getUserById`.')).toBe('Cause\nThe pool is full; see getUserById.')
   expect(plain('a * b * c')).toBe('a * b * c')
+  expect(plain('更多请见[示例网站](https://example.com)。')).toBe('更多请见示例网站。')
+  expect(plain('| 响应头 | 用途 |\n| ETag | 验证 |')).toBe('响应头 · 用途\nETag · 验证')
+  expect(plain('a | b')).toBe('a | b')
 })
 
 test('a reply with a long code block sends only its prose to the model', AUTO, async ($, on) => {
@@ -2318,7 +2321,8 @@ test('a long reply is translated in one aligned call and stored with its parts',
   expect(calls[0].prompt.startsWith('<<<\n') && calls[0].prompt.endsWith('\n>>>')).toBe(true)
   const text = 'Check the logs.\n\nThen the pool config.\n\nFinally restart.'
   expect(storedOf(store, LONG)).toEqual({ status: 'done', text, parts: 3, of: 3 })
-  expect((await ui.find({ type: 'Text', text: /Check the logs/ }))?.text).toBe(text)
+  // drawn by paragraph: one gloss line per part
+  for (const t of text.split('\n\n')) expect((await ui.find({ type: 'Text', text: t }))?.text).toBe(t)
   await ui.unmount()
 })
 
@@ -2434,4 +2438,134 @@ test('a rate limit on the aligned call makes no whole-text fallback call', AUTO,
   expect(calls.length).toBeGreaterThan(0)
   expect(calls.every(c => c.system.includes('{"t"'))).toBe(true)
   await ui.unmount()
+})
+
+// ---- the paragraph view (an open, aligned gloss drawn between the reply's chunks) ----
+
+const VIEW = '先看日志。\n\n再看连接池配置。\n\n```sh\nnpm test\n```\n\n最后重启服务。\n\n```sh\nls\n```'
+const VIEW_GLOSS = { status: 'done', text: 'Check the logs.\n\nThen the pool config.\n\nFinally restart.', parts: 3, of: 3 }
+
+/** An engine row that draws the text it is given (a rewrite shows). */
+function textRow(on: any) {
+  on('turn.complete', (_: any, e: any) => ({ text: e.answer }))
+  on('ui.render', ($: any, e: any) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>{`engine: ${e.props.text}`}</Text>
+  })
+}
+
+function viewStore(on: any, gloss: object = VIEW_GLOSS) {
+  const store = memStore(on)
+  store.set(`g2:${hash('en\u0000' + VIEW)}`, gloss)
+  textRow(on)
+  return store
+}
+
+const view = (surface: (typeof SURFACES)[number]) => ({ ...replyRow(VIEW), surface, requestId: `v-${surface}` })
+
+test('an open aligned reply: the engine draws the first chunk, later chunks are Markdown, each part has its tag', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  viewStore(on)
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount(view(surface))
+    await endTurn($, VIEW)
+    await clock.settle()
+    expect((await ui.find({ type: 'Text', text: /^engine: / }))?.text).toBe('engine: 先看日志。')
+    expect(await ui.find({ type: 'Markdown', text: '再看连接池配置。' })).toBeDefined()
+    expect(await ui.find({ type: 'Markdown', text: '```sh\nnpm test\n```\n\n最后重启服务。' })).toBeDefined()
+    expect(await ui.find({ type: 'Markdown', text: '```sh\nls\n```' })).toBeDefined()
+    expect((await ui.findAll({ type: 'Markdown' })).length).toBe(3)
+    for (const t of ['Check the logs.', 'Then the pool config.', 'Finally restart.']) expect((await ui.find({ type: 'Text', text: t }))?.text).toBe(t)
+    expect((await ui.findAll({ type: 'Text', text: /^EN$/ })).length).toBe(3)
+    await ui.unmount()
+  }
+})
+
+test('a cut aligned reply draws the chunks past its parts with no gloss line', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  viewStore(on, { status: 'done', text: 'Check the logs.\n\nThen the pool config. …', parts: 2, of: 3 })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount(view(surface))
+    await endTurn($, VIEW)
+    await clock.settle()
+    expect((await ui.findAll({ type: 'Text', text: /^EN$/ })).length).toBe(2)
+    expect(await ui.find({ type: 'Text', text: /Finally/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Markdown', text: '```sh\nls\n```' })).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+test('folded shows the whole reply; opening draws the view, the first line folds it back, the menu works', async ($, on) => {
+  const clock = mock.clock(on)
+  viewStore(on)
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount(view(surface))
+    await clock.settle()
+    expect((await ui.find({ type: 'Text', text: /^engine: / }))?.text).toBe(`engine: ${VIEW}`)
+    expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
+    await ui.press({ key: 'lingo-unfold' })
+    await clock.settle()
+    expect((await ui.findAll({ type: 'Markdown' })).length).toBe(3)
+    await ui.press({ key: 'lingo-tag' })
+    expect(await ui.find({ type: 'Button', key: 'lingo-hide' })).toBeDefined()
+    await ui.press({ key: 'lingo-tag' })
+    await ui.press({ key: 'lingo-fold' })
+    await clock.settle()
+    expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
+    expect((await ui.find({ type: 'Text', text: /^engine: / }))?.text).toBe(`engine: ${VIEW}`)
+    await ui.unmount()
+  }
+})
+
+for (const surface of SURFACES) {
+  test(`hiding the translation restores the whole reply (${surface})`, AUTO, async ($, on) => {
+    const clock = mock.clock(on)
+    viewStore(on)
+    const ui = await $.ui.mount(view(surface))
+    await endTurn($, VIEW)
+    await clock.settle()
+    expect(await ui.find({ type: 'Markdown' })).toBeDefined()
+    await ui.press({ key: 'lingo-tag' })
+    await ui.press({ key: 'lingo-hide' })
+    await clock.settle()
+    expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
+    expect((await ui.find({ type: 'Text', text: /^engine: / }))?.text).toBe(`engine: ${VIEW}`)
+    await ui.unmount()
+  })
+}
+
+test('a prompt with an aligned gloss draws the joined text, no Markdown', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  viewStore(on)
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount(userRow(VIEW, surface, `u-${surface}`))
+    await clock.settle()
+    expect((await ui.find({ type: 'Text', text: /Check the logs/ }))?.text).toBe(VIEW_GLOSS.text)
+    expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
+    await ui.unmount()
+  }
+})
+
+test('a gloss that does not fit the reply draws as a whole text', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  viewStore(on, { ...VIEW_GLOSS, of: 4 })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount(view(surface))
+    await endTurn($, VIEW)
+    await clock.settle()
+    expect(await ui.find({ type: 'Markdown' })).toBeUndefined()
+    expect((await ui.find({ type: 'Text', text: /^engine: / }))?.text).toBe(`engine: ${VIEW}`)
+    expect((await ui.find({ type: 'Text', text: /Check the logs/ }))?.text).toBe(VIEW_GLOSS.text)
+    await ui.unmount()
+  }
+})
+
+test('a long reply already in the target, copied back part for part, is "same"', AUTO, async ($, on) => {
+  const clock = mock.clock(on)
+  const text = 'Run lint again quickly\n\nBuild once more now\n\nCheck output twice today'
+  const { calls, store } = aligned(on, [JSON.stringify({ t: ['Run lint again quickly', 'Build once more now', 'Check output twice today'] })])
+  await translated($, clock, text)
+  expect(calls.length).toBe(1)
+  expect(calls[0].system).toContain('{"same":true}')
+  expect(storedOf(store, text)).toEqual({ status: 'same', text: '' })
 })

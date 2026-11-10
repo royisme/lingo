@@ -253,6 +253,9 @@ export function plain(text: string): string {
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/(\*\*|__)(?=\S)([\s\S]*?\S)\1/g, '$2')
     .replace(/`([^`\n]+)`/g, '$1')
+    // a link as its text (the source row above still has it); a table row as its cells
+    .replace(/\[([^\]\n]+)\]\([^)\s]+\)/g, '$1')
+    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, cells: string) => cells.split('|').map(c => c.trim()).filter(Boolean).join(' · '))
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
